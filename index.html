@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TalkyHub Widget — dev harness</title>
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; color: #1f2430; background: #f7f7fb; }
+      .page { max-width: 680px; margin: 0 auto; padding: 64px 24px 140px; }
+      h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 12px; }
+      p { color: #5b6472; line-height: 1.6; }
+      .hint { margin-top: 26px; font-size: 13.5px; color: #8a8f9c; }
+      code { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #4a2fc4; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Acme Store</h1>
+      <p>A fake host page for developing the TalkyHub widget. Talky is floating bottom-right — click to open the chat, send a message, and the mock transport replies after a typing pause.</p>
+      <p class="hint">Loaded via <code>window.talkyhubSettings</code> → <code>/src/loader.ts</code>. In production it's one async <code>&lt;script data-token&gt;</code>.</p>
+    </div>
+
+    <script>
+      window.talkyhubSettings = { token: 'demo', apiBase: '' };
+    </script>
+    <script type="module" src="/src/loader.ts"></script>
+  </body>
+</html>

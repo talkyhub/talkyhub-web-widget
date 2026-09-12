@@ -1,0 +1,56 @@
+name: Deploy Widget CDN
+
+# Self-hosted static deploy: build the widget bundle and publish it to the same server as the API/docs, served
+# by host nginx at cdn.talkyhub.ru (deploy/nginx/cdn.talkyhub.ru.conf). The bundle path is versioned
+# (/widget/v1/loader.js) and cached immutable, so we rsync ADDITIVELY (no --delete) — old versions keep working
+# for sites that still embed them; a breaking change bumps to /widget/v2/.
+#
+# GitHub -> Settings -> Environments -> "production" (same values as the api/docs repos):
+#   Secret    SSH_KEY     private key whose public half is in the server user's authorized_keys
+#   Variables SSH_HOST / SSH_USER / SSH_PORT (opt, 22) / CDN_DEPLOY_PATH (opt, /var/www/cdn.talkyhub.ru)
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cdn-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.CDN_DEPLOY_PATH || '/var/www/cdn.talkyhub.ru' }}
+      SSH_HOST: ${{ vars.SSH_HOST }}
+      SSH_USER: ${{ vars.SSH_USER }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the widget bundle
+        run: npm run build   # -> dist/widget/v1/loader.js (Preact + CSS inlined, self-contained IIFE)
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Publish dist to the CDN root (additive — keeps older versions)
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
+          rsync -az --chmod=D755,F644 -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT" \
+            dist/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
