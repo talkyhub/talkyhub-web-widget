@@ -1,4 +1,4 @@
-import type { Author, Message, WidgetConfig } from './types'
+import type { Author, Contact, Message, WidgetConfig } from './types'
 import { rid } from './types'
 import { loadSession, saveSession } from './session'
 
@@ -8,10 +8,20 @@ export interface TransportEvents {
   // Server history returned by POST /session (only called when non-empty), so a
   // returning visitor's thread replaces the client-rendered greeting.
   onHistory?: (messages: Message[]) => void
+  // An agent marked the conversation resolved. The thread stays usable — the API reopens it
+  // for a grace window — so this is a status notice, not an end state.
+  onResolved?: (conversationId: string) => void
+  // The message identified by `echoId` landed on a NEW conversation: the bound one had been
+  // resolved long enough to go cold, and the API rolled the visitor over. Everything above
+  // that message belongs to the previous, closed thread.
+  onRollover?: (conversationId: string, echoId?: string) => void
 }
 
 export interface Transport {
-  start(): Promise<void>
+  // `contact` carries the pre-chat answers into POST /session, where the API resolves them
+  // through the same ContactResolver every inbound channel uses. Omitted when the pre-chat
+  // form is disabled — the visitor then stays anonymous until they identify themselves.
+  start(contact?: Contact): Promise<void>
   // echoId (optional) is the optimistic client id; the real transport sends it so the
   // server can round-trip it for reconciliation. MockTransport ignores it.
   send(text: string, echoId?: string): void
@@ -24,7 +34,7 @@ export class MockTransport implements Transport {
   private timers: number[] = []
   constructor(private ev: TransportEvents) {}
 
-  async start(): Promise<void> {}
+  async start(_contact?: Contact): Promise<void> {}
 
   send(text: string, _echoId?: string): void {
     this.timers.push(window.setTimeout(() => this.ev.onTyping(true), 450))
@@ -62,7 +72,10 @@ interface WireMessage {
 }
 
 function mapWire(w: WireMessage): Message {
-  const author: Author = w.author === 'visitor' ? 'visitor' : 'agent' // bot/system render as agent
+  // bot replies are chat and render as bubbles; `system` is a lifecycle notice and renders
+  // as a centred line, matching the notices the widget raises for itself.
+  const author: Author =
+    w.author === 'visitor' ? 'visitor' : w.author === 'system' ? 'system' : 'agent'
   return {
     id: w.id,
     body: w.content ?? '',
@@ -90,14 +103,14 @@ export class SseTransport implements Transport {
     return `${this.base}/api/v1/widget/${encodeURIComponent(this.token)}${path}`
   }
 
-  async start(): Promise<void> {
+  async start(contact?: Contact): Promise<void> {
     const session = loadSession(this.token)
     let data: { session_token: string; conversation_id: string; messages?: WireMessage[] }
     try {
       const res = await fetch(this.url('/session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_id: session.sourceId }),
+        body: JSON.stringify({ source_id: session.sourceId, contact: contact ?? session.contact }),
       })
       if (!res.ok) return // widget stays usable with the client-rendered greeting
       data = await res.json()
@@ -126,6 +139,17 @@ export class SseTransport implements Transport {
       const es = new EventSource(`${this.base}${stream_url}`)
       // Server frames outbound messages as `event: message` (default type) with a JSON WidgetMessage body.
       es.onmessage = (e) => this.onWire(e.data)
+      // Resolution is a NAMED frame (`event: conversation.resolved`), so onmessage never sees
+      // it — it needs its own listener or the widget silently ignores the agent closing the
+      // thread. Payload is { conversation_id }.
+      es.addEventListener('conversation.resolved', (e) => {
+        try {
+          const { conversation_id } = JSON.parse((e as MessageEvent).data) as { conversation_id: string }
+          this.ev.onResolved?.(conversation_id)
+        } catch {
+          /* ignore malformed frame */
+        }
+      })
       es.onerror = () => {
         /* EventSource reconnects on its own; nothing to do */
       }
@@ -144,13 +168,44 @@ export class SseTransport implements Transport {
   }
 
   send(text: string, echoId?: string): void {
-    void fetch(this.url('/messages'), {
+    void this.post(text, echoId).catch(() => {
+      /* best-effort; the optimistic bubble stays visible */
+    })
+  }
+
+  private async post(text: string, echoId?: string): Promise<void> {
+    const res = await fetch(this.url('/messages'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [SESSION_HEADER]: this.sessionToken },
       body: JSON.stringify({ content: text, echo_id: echoId }),
-    }).catch(() => {
-      /* best-effort; the optimistic bubble stays visible */
     })
+    if (!res.ok) return
+    const data = (await res.json()) as {
+      message: WireMessage
+      conversation_id: string
+      session_token?: string | null
+    }
+
+    // A session_token here means the API rolled this message over to a NEW conversation: the
+    // bound thread was resolved and had gone cold past the server's grace window. The
+    // decision is the server's alone — the widget's job is only to follow it, by adopting the
+    // new token/id and re-pointing the stream, which is still bound to the old conversation.
+    if (data.session_token) {
+      this.sessionToken = data.session_token
+      saveSession(this.token, {
+        ...loadSession(this.token),
+        sessionToken: data.session_token,
+        conversationId: data.conversation_id,
+      })
+      this.ev.onRollover?.(data.conversation_id, echoId)
+      this.es?.close()
+      this.es = null
+      await this.openStream()
+    }
+
+    // Reconcile the optimistic bubble with the persisted message (the POST response is the
+    // only place a visitor's own message comes back — the stream deliberately omits it).
+    this.ev.onMessage(mapWire(data.message))
   }
 
   stop(): void {

@@ -20,14 +20,18 @@ export function Mascot({ size = 32, variant = 'brand', class: cls }: MascotProps
   const grad = `tk-g${uid}`
   const gloss = `tk-gl${uid}`
   const white = variant === 'white'
-  const face = white ? '#5B3FD6' : '#ffffff'
+  // Body stops and face come from the accent-derived custom properties on the widget root,
+  // so a lime or blue brand doesn't leave a purple character on the page. `--on-accent` is
+  // the contrast-checked foreground, which keeps the eyes and smile legible on a light
+  // accent where plain white would disappear.
+  const face = white ? 'var(--accent)' : 'var(--on-accent)'
 
   return (
     <svg width={size} height={size} viewBox="0 0 240 232" fill="none" class={cls} aria-hidden="true">
       <defs>
         <linearGradient id={grad} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#7B5CF0" />
-          <stop offset="1" stop-color="#4A2FC4" />
+          <stop offset="0" stop-color="var(--grad-a)" />
+          <stop offset="1" stop-color="var(--grad-b)" />
         </linearGradient>
         <radialGradient id={gloss} cx="36%" cy="24%" r="70%">
           <stop offset="0" stop-color="#ffffff" stop-opacity="0.42" />

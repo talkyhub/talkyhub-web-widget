@@ -12,6 +12,16 @@ interface Props {
 
 // Body is rendered as text (Preact escapes it) — no innerHTML, so no XSS surface.
 export function Message({ m, firstOfGroup, lastOfGroup }: Props) {
+  // A lifecycle notice is not a participant's turn: centred, ruled, no bubble or timestamp,
+  // so it reads as the thread changing state rather than as someone saying something.
+  if (m.author === 'system') {
+    return (
+      <div class="tk-note" role="status">
+        <span>{m.body}</span>
+      </div>
+    )
+  }
+
   const out = m.author === 'visitor'
   return (
     <div class={`tk-row ${out ? 'out' : 'in'} ${firstOfGroup ? 'first' : ''} ${lastOfGroup ? 'last' : ''}`}>

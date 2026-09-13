@@ -11,17 +11,151 @@
       p { color: #5b6472; line-height: 1.6; }
       .hint { margin-top: 26px; font-size: 13.5px; color: #8a8f9c; }
       code { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #4a2fc4; }
+      .panel { margin-top: 32px; padding: 18px 20px; background: #fff; border: 1px solid #e6e8ef; border-radius: 14px; }
+      .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #8a8f9c; margin: 0 0 14px; }
+      .row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 14px; }
+      .row label { width: 92px; color: #5b6472; }
+      .row input[type="color"] { width: 44px; height: 28px; padding: 0; border: 1px solid #e6e8ef; border-radius: 6px; background: none; }
+      .swatches { display: flex; gap: 6px; }
+      .swatches button { width: 24px; height: 24px; border-radius: 6px; border: 1px solid rgba(0,0,0,.12); cursor: pointer; }
+      select { font: inherit; padding: 4px 8px; border: 1px solid #e6e8ef; border-radius: 8px; background: #fff; }
+      .reset { margin-top: 8px; font-size: 13px; background: none; border: 0; color: #6a4ce0; cursor: pointer; padding: 0; }
     </style>
   </head>
   <body>
     <div class="page">
       <h1>Acme Store</h1>
       <p>A fake host page for developing the TalkyHub widget. Talky is floating bottom-right — click to open the chat, send a message, and the mock transport replies after a typing pause.</p>
+
+      <div class="panel">
+        <h2>Mock <code>/config</code> response</h2>
+        <div class="row">
+          <label for="accent">accent</label>
+          <input id="accent" type="color" />
+          <span class="swatches">
+            <button type="button" style="background:#6a4ce0" data-accent="#6a4ce0" title="#6a4ce0"></button>
+            <button type="button" style="background:#b6e22f" data-accent="#b6e22f" title="#b6e22f"></button>
+            <button type="button" style="background:#1f93ff" data-accent="#1f93ff" title="#1f93ff"></button>
+            <button type="button" style="background:#e2445c" data-accent="#e2445c" title="#e2445c"></button>
+            <button type="button" style="background:#111111" data-accent="#111111" title="#111111"></button>
+          </span>
+        </div>
+        <div class="row">
+          <label for="position">position</label>
+          <select id="position"><option>bottom-right</option><option>bottom-left</option></select>
+        </div>
+        <div class="row">
+          <label for="launcher">launcher</label>
+          <select id="launcher"><option>mascot</option><option>bubble</option><option>label</option></select>
+        </div>
+        <div class="row">
+          <label for="prechat">pre-chat</label>
+          <select id="prechat">
+            <option value="">off</option>
+            <option value="name,email">name + email</option>
+            <option value="name,email,phone">name + email + phone</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="channels">channels</label>
+          <select id="channels">
+            <option value="">off</option>
+            <option value="some">telegram + whatsapp + vk</option>
+            <option value="all">all six (incl. MAX + Instagram)</option>
+            <option value="bare">urls only, no kind</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="greeting">greeting</label>
+          <select id="greeting"><option value="on">set</option><option value="null">null (disabled)</option></select>
+        </div>
+        <button class="reset" type="button" id="reset">Reset visitor session (re-show pre-chat)</button>
+      </div>
+
       <p class="hint">Loaded via <code>window.talkyhubSettings</code> → <code>/src/loader.ts</code>. In production it's one async <code>&lt;script data-token&gt;</code>.</p>
     </div>
 
     <script>
-      window.talkyhubSettings = { token: 'demo', apiBase: '' };
+      // The harness stubs GET /api/v1/widget/demo/config so the real loadConfig() path runs
+      // — snake_case parsing, null handling and validation included — with no backend.
+      const CONTROLS = ['accent', 'position', 'launcher', 'prechat', 'channels', 'greeting'];
+      const DEFAULTS = { accent: '#6a4ce0', position: 'bottom-right', launcher: 'mascot', prechat: '', channels: '', greeting: 'on' };
+      const CHANNELS = {
+        some: [
+          { kind: 'telegram', url: 'https://t.me/verificahub' },
+          { kind: 'whatsapp', url: 'https://wa.me/79991234567' },
+          { kind: 'vk', url: 'https://vk.com/verificahub' },
+        ],
+        all: [
+          { kind: 'telegram', url: 'https://t.me/verificahub' },
+          { kind: 'whatsapp', url: 'https://wa.me/79991234567' },
+          { kind: 'vk', url: 'https://vk.com/verificahub' },
+          { kind: 'max', url: 'https://max.ru/verificahub' },
+          { kind: 'instagram', url: 'https://instagram.com/verificahub' },
+          { kind: 'phone', url: 'tel:+79991234567' },
+          { kind: 'javascript-xss', url: 'javascript:alert(1)' },
+        ],
+        bare: [
+          { url: 'https://t.me/verificahub' },
+          { url: 'https://wa.me/79991234567' },
+          { url: 'https://vk.ru/verificahub' },
+          { url: 'https://max.ru/verificahub' },
+          { url: 'mailto:support@verificahub.ru' },
+          { url: 'https://signal.me/#p/+79991234567' },
+        ],
+      };
+      const params = new URLSearchParams(location.search);
+      const state = Object.fromEntries(CONTROLS.map(k => [k, params.get(k) ?? DEFAULTS[k]]));
+
+      // Point the harness at a real API instead of the stub:
+      //   ?api=http://localhost:5178&token=wgt_test
+      // That exercises SseTransport — session, SSE stream, resolution, rollover — none of
+      // which the MockTransport path can reach.
+      const liveApi = params.get('api');
+      if (liveApi) {
+        window.talkyhubSettings = { token: params.get('token') || 'wgt_test', apiBase: liveApi };
+      }
+
+      const realFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (liveApi) return realFetch(input, init);
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.includes('/api/v1/widget/') && url.endsWith('/config')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            agent_name: 'VerificaHub - Поддержка',
+            greeting: state.greeting === 'null' ? null : 'Привет! 👋 Чем можем помочь?',
+            reply_time: null,
+            appearance: {
+              accent: state.accent, position: state.position, launcher: state.launcher,
+              launcher_text: 'Напишите нам, мы онлайн!', branding: true,
+            },
+            pre_chat: { enabled: !!state.prechat, fields: state.prechat ? state.prechat.split(',') : [] },
+            channels: CHANNELS[state.channels] || [],
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
+        return realFetch(input, init);
+      };
+
+      // token stays 'demo' so createTransport() keeps using MockTransport for messages.
+      if (!liveApi) window.talkyhubSettings = { token: 'demo', apiBase: '/mock' };
+
+      function go(next) {
+        const q = new URLSearchParams({ ...state, ...next });
+        location.search = q.toString();
+      }
+      addEventListener('DOMContentLoaded', () => {
+        for (const k of CONTROLS) {
+          const el = document.getElementById(k);
+          el.value = state[k];
+          el.addEventListener('change', () => go({ [k]: el.value }));
+        }
+        document.querySelectorAll('[data-accent]').forEach(b =>
+          b.addEventListener('click', () => go({ accent: b.dataset.accent })));
+        document.getElementById('reset').addEventListener('click', () => {
+          Object.keys(localStorage).filter(k => k.startsWith('talkyhub:')).forEach(k => localStorage.removeItem(k));
+          location.reload();
+        });
+      });
     </script>
     <script type="module" src="/src/loader.ts"></script>
   </body>

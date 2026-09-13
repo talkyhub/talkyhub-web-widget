@@ -1,9 +1,15 @@
 name: Deploy Widget CDN
 
 # Self-hosted static deploy: build the widget bundle and publish it to the same server as the API/docs, served
-# by host nginx at cdn.talkyhub.ru (deploy/nginx/cdn.talkyhub.ru.conf). The bundle path is versioned
-# (/widget/v1/loader.js) and cached immutable, so we rsync ADDITIVELY (no --delete) — old versions keep working
-# for sites that still embed them; a breaking change bumps to /widget/v2/.
+# by host nginx at cdn.talkyhub.ru (deploy/nginx/cdn.talkyhub.ru.conf).
+#
+# Each build emits THREE files into dist/widget/v1/:
+#   loader.js            the stable embed URL, overwritten every release, short-cached
+#   loader.<hash>.js     an immutable content-hashed copy of the same bytes
+#   manifest.json        which hash is current, its sha256 and build time
+# We rsync ADDITIVELY (no --delete) so every past hashed build stays reachable — that is what
+# makes a rollback a one-line nginx/customer change instead of a rebuild. The major version in
+# the path (/widget/v1/) is reserved for BREAKING changes, not for ordinary releases.
 #
 # GitHub -> Settings -> Environments -> "production" (same values as the api/docs repos):
 #   Secret    SSH_KEY     private key whose public half is in the server user's authorized_keys
@@ -38,7 +44,10 @@ jobs:
       - run: npm ci
 
       - name: Build the widget bundle
-        run: npm run build   # -> dist/widget/v1/loader.js (Preact + CSS inlined, self-contained IIFE)
+        run: npm run build   # -> dist/widget/v1/{loader.js, loader.<hash>.js, manifest.json}
+
+      - name: Run tests
+        run: npm test
 
       - name: Configure SSH
         env:
@@ -54,3 +63,6 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
           rsync -az --chmod=D755,F644 -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT" \
             dist/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
+
+      - name: Report what went live
+        run: cat dist/widget/v1/manifest.json

@@ -1,3 +1,5 @@
+import type { Contact } from './types'
+
 // Per-visitor session, persisted in localStorage and scoped by widget token so two
 // widgets on the same origin don't collide. `sourceId` is the stable visitor id
 // (Chatwoot's pubsub_token analogue) sent to the API to resolve/create the contact;
@@ -7,6 +9,13 @@ export interface Session {
   sourceId: string
   sessionToken?: string
   conversationId?: string
+  // Pre-chat answers, kept so a returning visitor isn't asked for their details again.
+  // `preChatDone` is separate from `contact` because a form of all-optional fields can be
+  // submitted empty and still counts as answered.
+  contact?: Contact
+  preChatDone?: boolean
+  // The visitor closed the 'label' launcher's invitation card; don't offer it again.
+  labelDismissed?: boolean
 }
 
 const KEY = (token: string) => `talkyhub:session:${token}`
