@@ -13,6 +13,7 @@ export const DEFAULT_CONFIG: WidgetConfig = {
     position: 'bottom-right',
     launcher: 'mascot',
     launcherText: 'Chat with us — we’re online',
+    modal: false,
   },
   preChat: { enabled: false, fields: ['name', 'email'] },
   channels: [],
@@ -31,6 +32,7 @@ interface RemoteConfig {
     position?: string
     launcher?: string
     launcher_text?: string | null
+    modal?: boolean
   }
   pre_chat?: { enabled?: boolean; fields?: string[] }
   channels?: { kind?: string; url?: string; label?: string; color?: string }[]
@@ -76,7 +78,7 @@ function preChatFields(fields: string[] | undefined, fallback: PreChatField[]): 
  */
 export function applyOverrides(config: WidgetConfig, overrides?: AppearanceOverrides): WidgetConfig {
   if (!overrides) return config
-  const { accent, onAccent, position, launcher, launcherText } = overrides
+  const { accent, onAccent, position, launcher, launcherText, modal } = overrides
   return {
     ...config,
     appearance: {
@@ -86,6 +88,7 @@ export function applyOverrides(config: WidgetConfig, overrides?: AppearanceOverr
       position: oneOf(position, POSITIONS, config.appearance.position),
       launcher: oneOf(launcher, LAUNCHERS, config.appearance.launcher),
       launcherText: launcherText?.trim() || config.appearance.launcherText,
+      modal: typeof modal === 'boolean' ? modal : config.appearance.modal,
     },
   }
 }
@@ -93,6 +96,7 @@ export function applyOverrides(config: WidgetConfig, overrides?: AppearanceOverr
 export interface AppearanceOverrides {
   accent?: string
   onAccent?: string
+  modal?: boolean
   position?: string
   launcher?: string
   launcherText?: string
@@ -208,6 +212,7 @@ export async function loadConfig(token?: string, apiBase = ''): Promise<WidgetCo
         launcherText:
           optional(r.appearance?.launcher_text, base.appearance.launcherText) ??
           base.appearance.launcherText,
+        modal: typeof r.appearance?.modal === 'boolean' ? r.appearance.modal : base.appearance.modal,
       },
       preChat: {
         enabled: r.pre_chat?.enabled ?? base.preChat.enabled,

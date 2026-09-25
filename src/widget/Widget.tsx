@@ -1,5 +1,4 @@
-import { useEffect } from 'preact/hooks'
-import { effect } from '@preact/signals'
+import { useEffect, useRef } from 'preact/hooks'
 import type { Contact, Message, WidgetConfig } from '../core/types'
 import { createTransport } from '../core/transport'
 import {
@@ -30,6 +29,7 @@ import { useCompact } from './useCompact'
 // form flash, or opens an anonymous session that setUser then has to replace.
 export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser | null }) {
   const compact = useCompact()
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const greeting = (): Message[] =>
@@ -63,10 +63,6 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     // re-identified, even if last visit's user was the same person.
     let appliedKey: string | null = null
     let started = false
-    // Mirrors preChatPending as a PLAIN variable on purpose. The open-watcher below must not
-    // subscribe to that signal: submitPreChat() clears it before handing over the answers, so a
-    // tracked read would re-run the effect and open the session with the pre-form contact.
-    let gated = false
 
     const warnRejected = (u: NormalizedUser) => {
       if (u.rejected.length) {
@@ -83,11 +79,17 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       appliedKey = userKey(identity)
       // Host-supplied details win over anything stored or typed: the app's record of its own
       // signed-in user is more authoritative than a pre-chat answer from a past visit.
-      void t.start({
+      const session = {
         contact: { ...contact, ...identity.contact },
         identifier: identity.identifier,
         identifierHash: identity.identifierHash,
-      })
+      }
+      // A visitor who already has a conversation resumes it now — that creates nothing, and it
+      // is what keeps the unread badge live while the panel is shut. Everyone else is only
+      // armed: their first message is what opens the session, so a widget that is loaded,
+      // opened and abandoned leaves no empty conversation behind.
+      if (loadSession(config.token).conversationId) void t.start(session)
+      else t.arm(session)
     }
 
     // Opening a session is what creates the conversation, so it never happens just because a page
@@ -99,16 +101,11 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       const s = loadSession(config.token)
       prefill.value = identity.contact
       if (config.preChat.enabled && !s.preChatDone && remainingFields(config.preChat.fields, identity.contact).length) {
-        gated = true
         preChatPending.value = true
         return
       }
-      gated = false
       preChatPending.value = false
-      // A visitor who already has a thread is only being resumed — nothing is created — and
-      // connecting now is what keeps their unread badge working while the panel is shut. A
-      // first-time visitor gets nothing until they actually open the widget.
-      if (s.conversationId || s.preChatDone || s.contact) begin(s.contact)
+      begin(s.contact)
     }
 
     // Forget this browser's visitor and start again — as `next` when a different user signs in,
@@ -159,7 +156,6 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     }
 
     onStartSession((contact?: Contact) => {
-      gated = false
       const merged = { ...contact, ...identity.contact }
       saveSession(config.token, { ...loadSession(config.token), contact: merged, preChatDone: true })
       begin(merged)
@@ -170,38 +166,89 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     registerHost({ setUser: applyUser, reset: () => resetAll() })
     boot()
 
-    // The deferred half of the rule above: the first open of the panel opens the session.
-    // begin() is idempotent, so this is a no-op once one exists.
-    const stopOpenWatch = effect(() => {
-      if (isOpen.value && !gated) begin(loadSession(config.token).contact)
-    })
-
     return () => {
-      stopOpenWatch()
       registerHost(null)
       t.stop()
       preChatPending.value = false
     }
   }, [])
 
-  const { accent, onAccent, position, launcher } = config.appearance
+  const { accent, onAccent, position, launcher, modal } = config.appearance
+  const open = isOpen.value
   // The panel and the floating channel row both clear the launcher, whose height differs per
   // shape — and the shape isn't just the configured value (see launcherShape).
-  const shape = launcherShape(launcher, isOpen.value)
+  const shape = launcherShape(launcher, open)
+  // In modal mode a floating row would sit on the scrim, so the channels move inside the panel
+  // — the same place they go on a phone.
+  const channelsInPanel = compact || modal
+
+  // Dimming the page makes this a real dialog, so it has to behave like one: Escape closes it,
+  // Tab stays inside it, the page underneath stops scrolling, and focus goes back where it came
+  // from afterwards. Without the trap, tabbing would walk into a page the visitor can't see.
+  useEffect(() => {
+    const root = rootRef.current
+    const panel = root?.querySelector<HTMLElement>('.tk-panel')
+    if (!modal || !open || !root || !panel) return
+
+    const shadow = root.getRootNode() as ShadowRoot
+    const restoreTo = shadow.activeElement as HTMLElement | null
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusable = () =>
+      Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null)
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        closeWidget()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = focusable()
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (e.shiftKey && shadow.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && shadow.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    root.addEventListener('keydown', onKeyDown)
+    // Land on the thing the visitor came to use, not the minimise button.
+    ;(panel.querySelector<HTMLElement>('.tk-input, .tk-field-input') ?? focusable()[0])?.focus()
+
+    return () => {
+      root.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = prevOverflow
+      restoreTo?.focus?.()
+    }
+  }, [modal, open])
+
   return (
     <div
-      class={`tk ${position === 'bottom-left' ? 'is-left' : ''} launcher-${shape}`}
+      ref={rootRef}
+      class={`tk ${position === 'bottom-left' ? 'is-left' : ''} ${modal ? 'is-modal' : ''} launcher-${shape}`}
       // Every accent-derived colour lands here as a custom property, so the gradient, the
       // shadows, the tinted surfaces and the mascot's own SVG stops all follow the site's
       // brand without a second source of truth.
       style={themeVars(accent, onAccent) as unknown as Record<string, string>}
     >
-      <Panel config={config} channels={compact ? config.channels : []} />
+      {modal && open && <div class="tk-backdrop" onClick={closeWidget} aria-hidden="true" />}
+      <Panel config={config} channels={channelsInPanel ? config.channels : []} />
       {/* Floating beside the launcher on desktop, and only while the panel is open — the
           row is an alternative to the conversation, so it belongs where the conversation
           already has the visitor's attention. On phones it moves inside the panel instead;
           see useCompact. */}
-      {!compact && isOpen.value && (
+      {!channelsInPanel && open && (
         <Channels channels={config.channels} variant="float" originRight={position !== 'bottom-left'} />
       )}
       <Launcher config={config} />

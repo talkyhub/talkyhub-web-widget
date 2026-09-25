@@ -88,6 +88,7 @@ Anonymous, CORS-any-origin, snake_case. `404` for an unknown token.
 | `appearance.position` | `bottom-right` \| `bottom-left` | `bottom-right` | Which corner the launcher and panel dock to. |
 | `appearance.launcher` | `mascot` \| `bubble` \| `label` | `mascot` | Launcher shape. See **Launchers**. |
 | `appearance.launcher_text` | string \| null | `"Chat with us — we're online"` | Copy inside the `label` launcher. Ignored by the others. |
+| `appearance.modal` | bool | `false` | Open as a modal: the page dims behind the panel and it is centred. See **Modal mode**. |
 | `pre_chat.enabled` | bool | `false` | Gate the thread behind a form. |
 | `pre_chat.fields` | `("name"\|"email"\|"phone")[]` | `["name","email"]` | Which fields to collect. Rendered in canonical order regardless of array order; unknown values are dropped. |
 | `channels` | `Channel[]` | `[]` | Messenger links offered beside the chat. See **Channel links**. |
@@ -324,6 +325,26 @@ where they are the authority, with the widget's copy treated as a convenience.
 
 ---
 
+## Modal mode
+
+With `appearance.modal`, opening the widget dims the page and centres the panel instead of
+leaving it in a corner. That makes it a real dialog, so it behaves like one:
+
+- **Escape** closes it, and so does a click on the backdrop.
+- **Tab is trapped** inside the panel — otherwise focus walks into a page the visitor cannot see.
+- **Focus** moves to the message field (or the first pre-chat field) on open and returns to the
+  launcher on close.
+- **Page scrolling is locked** while it is open and restored to exactly what it was.
+- **The launcher is hidden**, since it would otherwise float on top of the scrim, and the
+  channel row moves inside the panel for the same reason.
+
+On a phone the panel is already full-screen, so modal mode only adds the backdrop and the
+dialog behaviour; the centring is skipped.
+
+The header's control follows suit: a chevron means "tuck back down to the launcher", which is
+meaningless when the panel is full-screen or centred with no launcher to return to. In those
+cases it becomes an **X labelled "Close chat"**.
+
 ## Conversation lifecycle
 
 ### When the session opens
@@ -333,20 +354,28 @@ page loaded. It waits for the visitor to do something:
 
 | Visitor | When `/session` is called |
 |---|---|
-| First-timer, no pre-chat form | The first time they **open** the widget |
-| First-timer, pre-chat form on | When they **submit** the form |
-| Returning visitor who already has a thread | On load — this resumes an existing conversation rather than creating one |
+| First-timer | On their **first message** — nothing before it |
+| Returning visitor who already has a conversation | On load — this resumes it rather than creating one |
 
-Without this, everyone who merely landed on the page became a row in the agent console.
+Loading the page, opening the widget, reading the greeting and even submitting the pre-chat
+form all leave **nothing** on the server. Only a message does, so a widget that is opened and
+abandoned never becomes an empty conversation for an agent to triage.
+
+The transport holds the identity with `arm()` and opens the session lazily inside `send()`.
+Concurrent sends share one in-flight open, and a failed attempt clears it so the next message
+retries. Pre-chat answers are held the same way and ride along on that first `/session` call,
+so the conversation is born already carrying the visitor's details instead of as an anonymous
+shell.
 
 The returning-visitor exception is deliberate: defer that one too and an agent's follow-up
 would never raise an unread badge, because the SSE stream would not be connected while the
-panel is shut. Resuming costs nothing, since the conversation already exists.
+panel is shut. Resuming costs nothing, since the conversation already exists. `conversationId`
+in the stored session is the marker — it is only written once the server has actually returned
+one.
 
-One implementation note: the open-watcher reads a plain `gated` flag rather than the
-`preChatPending` signal. `submitPreChat()` clears that signal *before* handing over the
-answers, so a tracked read would re-run the effect and open the session with the pre-form
-contact instead of what the visitor typed.
+**Trade-off worth knowing:** a visitor who fills in the pre-chat form and then leaves without
+typing is not captured at all. If those leads matter more than empty conversations, make
+`submitPreChat` open the session instead of arming it.
 
 **Why the same thread comes back after a refresh.** On first load the widget mints a random
 `sourceId` and stores it in `localStorage` under `talkyhub:session:{token}`. `POST /session`
@@ -426,19 +455,18 @@ conversations read-only.
 Conventions this widget relies on. Breaking one usually shows up as a subtle production
 problem rather than a test failure.
 
-**Create the conversation lazily, on the first message.** ⚠️ *Partly open.*
+**Create the conversation lazily, on the first message.** *No longer blocking.*
 `POST /session` calls `ConversationResolutionService.ResolveAsync` unconditionally, so any call
-to it creates a `Conversation` row and fires `ConversationCreated`. The widget no longer calls
-it on page load (see **Conversation lifecycle**), which removes the worst of it — a passer-by is
-no longer a row in the console. What remains is the visitor who **opens the widget, reads the
-greeting and types nothing**: that still creates a conversation, because opening the session is
-what creates it.
+to it creates a `Conversation` row and fires `ConversationCreated`. The widget now calls it only
+when the visitor sends their first message (see **Conversation lifecycle**), so in practice no
+empty conversation is ever created.
 
-Chatwoot avoids this entirely by making conversation creation a `before_action` on
-`POST /messages` only (`Api::V1::Widget::MessagesController#set_conversation`). **The rest of the
-fix belongs in the API:** have `/session` resolve the contact and return any existing open
-conversation, and create one only when the first message arrives. The widget already follows a
-`conversation_id` that appears later, so this needs no widget change.
+Chatwoot enforces this server-side instead, as a `before_action` on `POST /messages` only
+(`Api::V1::Widget::MessagesController#set_conversation`). That is still the more robust home for
+the rule — it would hold for any client, not just this widget — so it is worth doing eventually:
+have `/session` resolve the contact and return any existing open conversation, and create one
+only when the first message arrives. The widget already follows a `conversation_id` that appears
+later, so it needs no change either way.
 
 **Serve config the widget can fall back from.** Every field optional-with-a-default, `null`
 reserved for "off". Never send a partially-built object the widget has to repair.

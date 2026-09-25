@@ -79,6 +79,11 @@ export interface WidgetConfig {
     launcher: 'mascot' | 'bubble' | 'label'
     /** Copy inside the 'label' launcher. Ignored by the other two. */
     launcherText: string
+    /**
+     * Open the panel as a modal: the page behind it dims, Escape and a click on the backdrop
+     * close it, and focus is held inside while it is open.
+     */
+    modal: boolean
   }
   preChat: { enabled: boolean; fields: PreChatField[] }
   /** Rendered as round links beside the launcher. Empty means the feature is off. */

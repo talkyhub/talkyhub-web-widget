@@ -30,6 +30,9 @@ export interface SessionIdentity {
 
 export interface Transport {
   start(identity?: SessionIdentity): Promise<void>
+  // Remember who the visitor is without opening anything. The session — and with it the
+  // conversation — is then opened by their first message. See SseTransport.deliver().
+  arm(identity?: SessionIdentity): void
   // The host identified its user after the session had already started (login in an SPA).
   identify(identity: SessionIdentity): Promise<void>
   // echoId (optional) is the optimistic client id; the real transport sends it so the
@@ -45,6 +48,8 @@ export class MockTransport implements Transport {
   constructor(private ev: TransportEvents) {}
 
   async start(_identity?: SessionIdentity): Promise<void> {}
+
+  arm(_identity?: SessionIdentity): void {}
 
   async identify(_identity: SessionIdentity): Promise<void> {}
 
@@ -111,6 +116,8 @@ function mapWire(w: WireMessage): Message {
 export class SseTransport implements Transport {
   private es: EventSource | null = null
   private sessionToken = ''
+  private armed: SessionIdentity | undefined
+  private opening: Promise<boolean> | null = null
   private readonly base: string
   private readonly token: string
 
@@ -123,12 +130,35 @@ export class SseTransport implements Transport {
     return `${this.base}/api/v1/widget/${encodeURIComponent(this.token)}${path}`
   }
 
+  /** Open the session now. Used to resume a visitor who already has a conversation. */
   async start(identity?: SessionIdentity): Promise<void> {
-    const data = await this.openSession(identity, loadSession(this.token))
-    if (!data) return
+    this.armed = identity
+    await this.ensureOpen()
+  }
+
+  /** Hold the identity; the first message opens the session with it. */
+  arm(identity?: SessionIdentity): void {
+    this.armed = identity
+  }
+
+  // Concurrent sends must not each POST /session, and a failed attempt has to be retryable, so
+  // the in-flight promise is cached and cleared on failure.
+  private async ensureOpen(): Promise<boolean> {
+    if (this.sessionToken) return true
+    this.opening ??= this.open()
+    return this.opening
+  }
+
+  private async open(): Promise<boolean> {
+    const data = await this.openSession(this.armed, loadSession(this.token))
+    if (!data) {
+      this.opening = null
+      return false
+    }
     const history = (data.messages ?? []).map(mapWire)
     if (history.length) this.ev.onHistory?.(history)
     await this.openStream()
+    return true
   }
 
   // setUser after the session already started. POST /session is idempotent for a source_id, so
@@ -136,6 +166,10 @@ export class SseTransport implements Transport {
   // lands on a DIFFERENT conversation — the user's thread from another device — follow it:
   // replace the history and re-ticket the stream, which is still bound to the old one.
   async identify(identity: SessionIdentity): Promise<void> {
+    this.armed = identity
+    // Nothing is open yet, so there is nothing to re-post: the details ride along when the
+    // visitor's first message opens the session.
+    if (!this.sessionToken) return
     const before = loadSession(this.token).conversationId
     const data = await this.openSession(identity, loadSession(this.token))
     if (!data || data.conversation_id === before) return
@@ -226,12 +260,16 @@ export class SseTransport implements Transport {
   }
 
   send(text: string, echoId?: string): void {
-    void this.post(text, echoId).catch(() => {
+    void this.deliver(text, echoId).catch(() => {
       /* best-effort; the optimistic bubble stays visible */
     })
   }
 
-  private async post(text: string, echoId?: string): Promise<void> {
+  private async deliver(text: string, echoId?: string): Promise<void> {
+    // This is where a conversation is born. Loading the page, opening the widget and reading the
+    // greeting all leave nothing behind on the server; only a message does.
+    if (!(await this.ensureOpen())) return
+
     const res = await fetch(this.url('/messages'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [SESSION_HEADER]: this.sessionToken },
@@ -269,6 +307,7 @@ export class SseTransport implements Transport {
   stop(): void {
     this.es?.close()
     this.es = null
+    this.opening = null
     // A reset() on logout stops and restarts this transport. Clearing the token means a message
     // sent in that gap is rejected, instead of landing in the previous user's conversation.
     this.sessionToken = ''

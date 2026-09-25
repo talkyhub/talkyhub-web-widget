@@ -43,8 +43,15 @@
 }
 .tk-launch:hover { transform: translateY(-3px) scale(1.05); filter: drop-shadow(0 13px 22px rgba(var(--shadow-rgb), 0.5)); }
 .tk-launch:active { transform: scale(0.97); }
-.tk-launch.is-open { transform: translateY(6px) scale(0.86); opacity: 0.9; }
-.tk-launch.is-mascot svg { width: 100%; height: 100%; display: block; }
+/* Only the glyph recedes when the panel opens. The button's BOX is the anchor the panel edge and
+   the channel row line up against, so transforming it shifted the launcher 6px down and ~5px in
+   while everything else stayed put. */
+.tk-launch.is-open { opacity: 0.9; }
+.tk-launch.is-mascot svg {
+  width: 100%; height: 100%; display: block;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+.tk-launch.is-mascot.is-open svg { transform: translateY(6px) scale(0.86); }
 
 /* the Jivo/Intercom-style greeting card: an invitation with copy, not just an icon */
 .tk-launch-wrap { position: fixed; right: 20px; bottom: 20px; z-index: 2147483000; }
@@ -118,6 +125,22 @@
   border-top: 1px solid var(--border); background: var(--surface);
 }
 
+/* ---- modal mode : the page dims and the panel takes the centre ---- */
+.tk-backdrop {
+  position: fixed; inset: 0; z-index: 2147482999;
+  background: rgba(15, 12, 32, 0.45); -webkit-tap-highlight-color: transparent;
+  animation: tk-backdrop-in 0.2s ease both;
+}
+@keyframes tk-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+.tk.is-modal .tk-panel {
+  top: 50%; left: 50%; right: auto; bottom: auto;
+  transform-origin: center; transform: translate(-50%, -48%) scale(0.97);
+}
+.tk.is-modal .tk-panel.is-open { transform: translate(-50%, -50%); }
+/* The launcher would float on top of the scrim; the header's minimise button closes the panel. */
+.tk.is-modal .tk-panel.is-open ~ .tk-launch,
+.tk.is-modal .tk-panel.is-open ~ .tk-launch-wrap { display: none; }
+
 /* ---- panel ---- */
 .tk-panel {
   position: fixed; right: 20px; bottom: 108px; z-index: 2147483000;
@@ -143,10 +166,14 @@
 .tk.is-left .tk-launch.is-label .tk-badge { left: auto; right: -7px; }
 
 @media (max-width: 480px) {
-  .tk-panel, .tk.is-left .tk-panel, .tk.launcher-bubble .tk-panel, .tk.launcher-label .tk-panel {
-    right: 0; left: 0; bottom: 0; width: 100vw; height: 100dvh;
+  .tk-panel, .tk.is-left .tk-panel, .tk.launcher-bubble .tk-panel, .tk.launcher-label .tk-panel,
+  .tk.is-modal .tk-panel {
+    top: auto; right: 0; left: 0; bottom: 0; width: 100vw; height: 100dvh;
     max-width: 100vw; max-height: 100dvh; border-radius: 0;
   }
+  /* full-screen already: centring transforms would only push it off-screen */
+  .tk.is-modal .tk-panel { transform: translateY(12px) scale(0.96); }
+  .tk.is-modal .tk-panel.is-open { transform: none; }
   /* Once the panel fills the screen there is nothing left for the launcher to sit beside —
      it just covers the composer's send button. The header's minimize button closes the
      panel, so hiding it here loses no affordance. */

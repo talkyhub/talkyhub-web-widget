@@ -66,6 +66,10 @@
           </select>
         </div>
         <div class="row">
+          <label for="modal">modal</label>
+          <select id="modal"><option value="off">off (floating card)</option><option value="on">on (dim + centre)</option></select>
+        </div>
+        <div class="row">
           <label for="greeting">greeting</label>
           <select id="greeting"><option value="on">set</option><option value="null">null (disabled)</option></select>
         </div>
@@ -78,8 +82,8 @@
     <script>
       // The harness stubs GET /api/v1/widget/demo/config so the real loadConfig() path runs
       // — snake_case parsing, null handling and validation included — with no backend.
-      const CONTROLS = ['accent', 'position', 'launcher', 'prechat', 'channels', 'greeting'];
-      const DEFAULTS = { accent: '#6a4ce0', position: 'bottom-right', launcher: 'mascot', prechat: '', channels: '', greeting: 'on' };
+      const CONTROLS = ['accent', 'position', 'launcher', 'prechat', 'channels', 'modal', 'greeting'];
+      const DEFAULTS = { accent: '#6a4ce0', position: 'bottom-right', launcher: 'mascot', prechat: '', channels: '', modal: 'off', greeting: 'on' };
       const CHANNELS = {
         some: [
           { kind: 'telegram', url: 'https://t.me/verificahub' },
@@ -128,6 +132,7 @@
             appearance: {
               accent: state.accent, position: state.position, launcher: state.launcher,
               launcher_text: 'Напишите нам, мы онлайн!',
+              modal: state.modal === 'on',
             },
             pre_chat: { enabled: !!state.prechat, fields: state.prechat ? state.prechat.split(',') : [] },
             channels: CHANNELS[state.channels] || [],

@@ -47,6 +47,7 @@ function reset() {
     config: {
       preChat: { enabled: false, fields: [] },
       launcher: 'mascot',
+      modal: false,
       accent: '#6a4ce0',
     },
   }
@@ -86,6 +87,7 @@ http.createServer(async (req, res) => {
         position: 'bottom-right',
         launcher: c.launcher,
         launcher_text: 'Напишите нам, мы онлайн!',
+        modal: c.modal,
       },
       pre_chat: c.preChat,
       channels: [
@@ -166,6 +168,7 @@ http.createServer(async (req, res) => {
       const f = q.get('prechat') || ''
       S.config.preChat = { enabled: !!f, fields: f ? f.split(',') : [] }
     }
+    if (q.has('modal')) S.config.modal = q.get('modal') === 'on'
     if (q.has('launcher')) S.config.launcher = q.get('launcher')
     if (q.has('accent')) S.config.accent = q.get('accent')
     return json(res, S.config)

@@ -145,6 +145,23 @@ describe('null means off, undefined means "no opinion"', () => {
   })
 })
 
+describe('modal mode', () => {
+  it('is off unless the API turns it on', async () => {
+    respond({})
+    expect((await load()).appearance.modal).toBe(false)
+  })
+
+  it('is read from the API response', async () => {
+    respond({ appearance: { modal: true } })
+    expect((await load()).appearance.modal).toBe(true)
+  })
+
+  it('ignores a non-boolean value', async () => {
+    respond({ appearance: { modal: 'yes' } })
+    expect((await load()).appearance.modal).toBe(false)
+  })
+})
+
 describe('pre-chat fields', () => {
   it('renders in canonical order and drops unknown fields', async () => {
     respond({ pre_chat: { enabled: true, fields: ['phone', 'nickname', 'name'] } })
