@@ -67,14 +67,18 @@ export interface WidgetConfig {
   replyTime?: string
   appearance: {
     accent: string
+    /**
+     * Text/icon colour drawn on the accent. Normally derived from the accent; set it only when a
+     * brand needs a specific one — the derived value keeps white on mid-tone colours and flips to
+     * ink on light ones.
+     */
+    onAccent?: string
     position: 'bottom-right' | 'bottom-left'
     // 'label' is the Jivo/Intercom-style greeting card: a pill carrying an invitation to
     // chat. Chatwoot calls the same shape `expanded_bubble` + `launcherTitle`.
     launcher: 'mascot' | 'bubble' | 'label'
     /** Copy inside the 'label' launcher. Ignored by the other two. */
     launcherText: string
-    /** Show the TalkyHub wordmark on the label launcher (free-plan attribution). */
-    branding: boolean
   }
   preChat: { enabled: boolean; fields: PreChatField[] }
   /** Rendered as round links beside the launcher. Empty means the feature is off. */

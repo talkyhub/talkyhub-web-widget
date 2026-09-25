@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import type { Contact, Message } from './types'
 import { rid } from './types'
 import type { Transport } from './transport'
+import type { HostUser } from './identity'
 
 // Widget-wide reactive state. Components read `.value` and re-render automatically.
 export const isOpen = signal(false)
@@ -11,19 +12,6 @@ export const unread = signal(0)
 // True while the pre-chat form is standing between the visitor and the thread. Set by
 // Widget on mount; cleared by submitPreChat(), which is what actually opens the session.
 export const preChatPending = signal(false)
-// The 'label' launcher collapses to a plain bubble once dismissed. Seeded from the stored
-// session by Widget, so the invitation doesn't come back on every page view.
-export const labelDismissed = signal(false)
-
-let onDismissLabel: (() => void) | null = null
-export function onLabelDismissed(fn: () => void): void {
-  onDismissLabel = fn
-}
-
-export function dismissLabel(): void {
-  labelDismissed.value = true
-  onDismissLabel?.()
-}
 
 let transport: Transport | null = null
 export function attachTransport(t: Transport): void {
@@ -40,6 +28,38 @@ export function onStartSession(fn: (contact?: Contact) => void): void {
 export function submitPreChat(contact: Contact): void {
   preChatPending.value = false
   sessionStarter?.(contact)
+}
+
+// Details the host app already knows about its signed-in user (TalkyHub.setUser). The pre-chat
+// form reads this to skip the fields it would otherwise ask for.
+export const prefill = signal<Contact>({})
+
+// The host page's runtime API (window.TalkyHub, loader.ts) can be called before the widget has
+// mounted — the loader is async, and an app calls setUser the moment its own auth resolves.
+// Calls are queued until Widget registers its handlers, then replayed in order.
+export interface HostHandlers {
+  setUser(user: HostUser | null): void
+  reset(): void
+}
+
+export type HostCall = { name: 'setUser'; user: HostUser | null } | { name: 'reset' }
+
+let host: HostHandlers | null = null
+const queued: HostCall[] = []
+
+function dispatch(h: HostHandlers, call: HostCall): void {
+  if (call.name === 'setUser') h.setUser(call.user)
+  else h.reset()
+}
+
+export function registerHost(handlers: HostHandlers | null): void {
+  host = handlers
+  if (handlers) for (const call of queued.splice(0)) dispatch(handlers, call)
+}
+
+export function callHost(call: HostCall): void {
+  if (host) dispatch(host, call)
+  else queued.push(call)
 }
 
 export function openWidget(): void {

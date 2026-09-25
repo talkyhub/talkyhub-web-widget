@@ -6,6 +6,7 @@
   "description": "TalkyHub embeddable live-chat widget (Preact + TypeScript).",
   "scripts": {
     "dev": "vite",
+    "dev:api": "node dev/stub-api.mjs",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

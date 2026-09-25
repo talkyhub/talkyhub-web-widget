@@ -15,18 +15,31 @@ interface MarkProps {
 // Telegram's paper plane.
 function Telegram({ size = 21 }: MarkProps) {
   return (
-    <svg width={size} height={size} viewBox="28 44 420 420" fill="currentColor" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="28 44 420 420"
+      fill="currentColor"
+      aria-hidden="true"
+      style={{ transform: 'translate(-1px, -1px)' }}
+    >
       <path d="M446.7 98.6l-67.6 318.8c-5.1 22.5-18.4 28.1-37.3 17.5l-103-75.9-49.7 47.8c-5.5 5.5-10.1 10.1-20.7 10.1l7.4-104.9 190.9-172.5c8.3-7.4-1.8-11.5-12.9-4.1L142.8 271.4 42.2 240c-21.9-6.9-22.3-21.9 4.6-32.4L418.4 66.4c18.2-6.9 34.2 4.1 28.3 32.2z" />
     </svg>
   )
 }
 
-// WhatsApp's handset inside a speech bubble.
-function WhatsApp({ size = 20 }: MarkProps) {
+// WhatsApp's handset-in-a-bubble, the official glyph outline.
+function WhatsApp({ size = 21 }: MarkProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2a9.9 9.9 0 00-8.5 15.02L2.2 22l5.1-1.27A9.9 9.9 0 1012 2zm0 1.9a8 8 0 116.9 12.06l-.28.46.72 2.63-2.7-.7-.44.25A8 8 0 0112 3.9z" />
-      <path d="M9.2 7.4c-.17-.4-.35-.4-.52-.41h-.44c-.15 0-.4.06-.61.29-.21.23-.8.78-.8 1.9s.82 2.2.93 2.36c.12.15 1.6 2.56 3.96 3.49 1.96.77 2.36.62 2.79.58.42-.04 1.37-.56 1.56-1.1.2-.54.2-1 .14-1.1-.06-.1-.21-.16-.44-.27-.23-.12-1.37-.68-1.58-.75-.21-.08-.37-.12-.52.11-.15.23-.6.75-.73.9-.14.16-.27.18-.5.06-.23-.11-.98-.36-1.86-1.15-.69-.61-1.15-1.37-1.29-1.6-.13-.23-.01-.36.1-.47.11-.1.24-.27.35-.4.12-.14.16-.23.24-.39.08-.15.04-.29-.02-.4-.06-.12-.51-1.26-.7-1.71z" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      style={{ transform: 'translateY(-1px)' }}
+    >
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.465 3.488" />
     </svg>
   )
 }
@@ -41,43 +54,13 @@ function Vk({ size = 28 }: MarkProps) {
   )
 }
 
-// MAX is a full-bleed tile: the gradient IS the logo, so it fills the button and takes no
-// background of its own. Gradient ids must be unique per instance or a second MAX button on
-// the page would reference the first one's defs — same reason Mascot counts instances.
-let maxUid = 0
-function Max({ size = 38 }: MarkProps) {
-  const uid = useMemo(() => ++maxUid, [])
-  const sheen = `tk-max-a${uid}`
-  const glow = `tk-max-b${uid}`
+// MAX's mark alone, drawn at glyph size on the brand's gradient (BRAND_GRADIENT). As its full
+// artwork tile it filled the entire button, while every sibling glyph fills about half of one —
+// so it read as far larger than anything else in the row.
+function Max({ size = 21 }: MarkProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 1000 1000" aria-hidden="true">
-      <defs>
-        <linearGradient id={sheen} x1="117.847" x2="1000" y1="760.536" y2="500" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stop-color="#4cf" />
-          <stop offset="0.662" stop-color="#53e" />
-          <stop offset="1" stop-color="#93d" />
-        </linearGradient>
-        {/* The source art fades to a stop with no stop-color, which defaults to black and can
-            leave a dark ring where browsers interpolate un-premultiplied. Same blue at zero
-            alpha renders the intended glow. */}
-        <radialGradient
-          id={glow}
-          cx="-87.392"
-          cy="1166.116"
-          r="500"
-          fx="-87.392"
-          fy="1166.116"
-          gradientTransform="rotate(51.356 1551.478 559.3) scale(2.42703433 1)"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stop-color="#00f" />
-          <stop offset="1" stop-color="#00f" stop-opacity="0" />
-        </radialGradient>
-      </defs>
-      <rect width="1000" height="1000" fill={`url(#${sheen})`} ry="249.681" />
-      <rect width="1000" height="1000" fill={`url(#${glow})`} ry="249.681" />
+    <svg width={size} height={size} viewBox="0 0 1000 1000" fill="currentColor" aria-hidden="true">
       <path
-        fill="#fff"
         fill-rule="evenodd"
         clip-rule="evenodd"
         d="M508.211 878.328c-75.007 0-109.864-10.95-170.453-54.75-38.325 49.275-159.686 87.783-164.979 21.9 0-49.456-10.95-91.248-23.36-136.873-14.782-56.21-31.572-118.807-31.572-209.508 0-216.626 177.754-379.597 388.357-379.597 210.785 0 375.947 171.001 375.947 381.604.707 207.346-166.595 376.118-373.94 377.224m3.103-571.585c-102.564-5.292-182.499 65.7-200.201 177.024-14.6 92.162 11.315 204.398 33.397 210.238 10.585 2.555 37.23-18.98 53.837-35.587a189.8 189.8 0 0 0 92.71 33.032c106.273 5.112 197.08-75.794 204.215-181.95 4.154-106.382-77.67-196.486-183.958-202.574Z"
@@ -89,8 +72,16 @@ function Max({ size = 38 }: MarkProps) {
 // Instagram's camera outline.
 function Instagram({ size = 20 }: MarkProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
-      stroke="currentColor" stroke-width="1.9">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      stroke="currentColor"
+      stroke-width="1.9"
+      style={{ transform: 'translate(-1px, -1px)' }}
+    >
       <rect x="2.8" y="2.8" width="18.4" height="18.4" rx="5.4" />
       <circle cx="12" cy="12" r="4.1" />
       <circle cx="17.4" cy="6.6" r="1.25" fill="currentColor" stroke="none" />
@@ -122,7 +113,7 @@ function Phone({ size = 20 }: MarkProps) {
 function Monogram({ label, size = 20 }: MarkProps & { label: string }) {
   const initial = useMemo(() => [...label.trim()][0]?.toUpperCase() ?? '?', [label])
   return (
-    <span class="tk-ch-mono" style={{ fontSize: `${Math.round(size * 0.72)}px` }} aria-hidden="true">
+    <span class="tk-ch-mono" style={{ fontSize: `${Math.round(size * 0.92)}px` }} aria-hidden="true">
       {initial}
     </span>
   )
@@ -134,37 +125,49 @@ export const BRAND_COLOR: Record<ChannelKind, string> = {
   telegram: '#1B8CC2',
   whatsapp: '#25D366',
   vk: '#0077FF',
-  max: 'transparent', // unused — MAX is full-bleed, see below
+  max: '#53e',
   instagram: '#DD2A7B',
   email: '#57506F',
   phone: '#17A06A',
   link: '#57506F',
 }
 
-// Marks that carry their own background and fill the whole button. The row must not paint a
-// colour behind these, and must not shrink them to glyph size.
-export const FULL_BLEED: ReadonlySet<ChannelKind> = new Set<ChannelKind>(['max'])
+// Brands whose mark is a gradient rather than a colour. Flattening either of these to a single
+// stop is the most recognisable way to get it wrong.
+export const BRAND_GRADIENT: Partial<Record<ChannelKind, string[]>> = {
+  instagram: ['#F9CE34', '#EE2A7B', '#6228D7'],
+  max: ['#4cf', '#53e 66%', '#93d'],
+}
 
-export const INSTAGRAM_STOPS = ['#F9CE34', '#EE2A7B', '#6228D7']
+const OPTICAL: Partial<Record<ChannelKind, number>> = {
+  telegram: 1.05,
+  whatsapp: 1.05,
+  vk: 1.4,
+  instagram: 1.15,
+  max: 1.15,
+  email: 1.1,
+  phone: 1.35,
+}
 
 export function BrandMark({ kind, label, size }: { kind: ChannelKind; label: string; size?: number }) {
+  const base = size ?? 20
+  const scaled = Math.round(base * (OPTICAL[kind] ?? 1))
   switch (kind) {
     case 'telegram':
-      return <Telegram size={size} />
+      return <Telegram size={scaled} />
     case 'whatsapp':
-      return <WhatsApp size={size} />
+      return <WhatsApp size={scaled} />
     case 'vk':
-      // Rendered oversize on purpose; the glyph sits small in its own viewBox.
-      return <Vk size={size ? Math.round(size * 1.4) : undefined} />
+      return <Vk size={scaled} />
     case 'max':
-      return <Max size={size} />
+      return <Max size={scaled} />
     case 'instagram':
-      return <Instagram size={size} />
+      return <Instagram size={scaled} />
     case 'email':
-      return <Email size={size} />
+      return <Email size={scaled} />
     case 'phone':
-      return <Phone size={size} />
+      return <Phone size={scaled} />
     default:
-      return <Monogram label={label} size={size} />
+      return <Monogram label={label} size={base} />
   }
 }

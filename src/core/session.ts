@@ -14,8 +14,10 @@ export interface Session {
   // submitted empty and still counts as answered.
   contact?: Contact
   preChatDone?: boolean
-  // The visitor closed the 'label' launcher's invitation card; don't offer it again.
-  labelDismissed?: boolean
+  // The host app's signed-in user this session belongs to (TalkyHub.setUser), kept so a
+  // DIFFERENT user on the same browser is detected and gets a fresh session. The
+  // identifier_hash is deliberately never stored — the host re-supplies it on every load.
+  identifier?: string
 }
 
 const KEY = (token: string) => `talkyhub:session:${token}`
@@ -50,4 +52,18 @@ export function saveSession(token: string, session: Session): void {
   } catch {
     /* ignore — the session stays in memory for this page load */
   }
+}
+
+/**
+ * Forget this browser's visitor entirely: new sourceId, no token, no conversation, no stored
+ * answers. What logout has to do on a shared device, so the next person to open the widget
+ * cannot see the previous one's thread. Chatwoot's `$chatwoot.reset()` equivalent.
+ */
+export function resetSession(token: string): Session {
+  try {
+    localStorage.removeItem(KEY(token))
+  } catch {
+    /* storage unavailable — nothing was persisted to remove */
+  }
+  return loadSession(token)
 }

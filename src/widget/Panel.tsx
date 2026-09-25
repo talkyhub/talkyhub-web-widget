@@ -5,6 +5,7 @@ import { MessageList } from './MessageList'
 import { Composer } from './Composer'
 import { PreChat } from './PreChat'
 import { Channels } from './Channels'
+import { Credit } from './Credit'
 
 // `channels` is passed in rather than read off config: on a phone the messenger row lives
 // inside the panel, on a desktop it floats beside the launcher, and Widget owns that choice.
@@ -19,7 +20,11 @@ export function Panel({ config, channels }: { config: WidgetConfig; channels: Ch
     >
       <Header config={config} />
       {gated ? (
-        <PreChat config={config} />
+        <>
+          <PreChat config={config} />
+          {/* With no composer to sit in, the credit is the panel's own footer. */}
+          <Credit />
+        </>
       ) : (
         <>
           <MessageList />

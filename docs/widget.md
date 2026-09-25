@@ -47,6 +47,10 @@ launcher off the "Pay" button, say). They're validated exactly like remote value
 deliberately cover **appearance only** — pre-chat and greetings are inbox policy and stay
 server-owned. `window.chatwootSettings` draws the same line.
 
+`talkyhubSettings.user` identifies a signed-in user — prefill for the pre-chat form, and with
+an HMAC, verified identity that follows the user across devices. It has its own reference:
+[identity.md](identity.md).
+
 ---
 
 ## `GET /api/v1/widget/{token}/config`
@@ -62,8 +66,7 @@ Anonymous, CORS-any-origin, snake_case. `404` for an unknown token.
     "accent": "#B6E22F",
     "position": "bottom-right",
     "launcher": "label",
-    "launcher_text": "Напишите нам, мы онлайн!",
-    "branding": true
+    "launcher_text": "Напишите нам, мы онлайн!"
   },
   "pre_chat": { "enabled": true, "fields": ["name", "email", "phone"] },
   "channels": [
@@ -81,15 +84,15 @@ Anonymous, CORS-any-origin, snake_case. `404` for an unknown token.
 | `greeting` | string \| null | built-in copy | First bubble in the thread, and the pre-chat form's intro line. |
 | `reply_time` | string \| null | `"replies in ~2 min"` | Appended to the header's presence line (`online · …`). |
 | `appearance.accent` | hex string | `#6a4ce0` | Seeds the entire palette. See **Colour**. |
+| `appearance.on_accent` | hex string \| null | derived | Forces the text/icon colour drawn on the accent. Only needed when the derived choice is wrong for a brand. |
 | `appearance.position` | `bottom-right` \| `bottom-left` | `bottom-right` | Which corner the launcher and panel dock to. |
 | `appearance.launcher` | `mascot` \| `bubble` \| `label` | `mascot` | Launcher shape. See **Launchers**. |
 | `appearance.launcher_text` | string \| null | `"Chat with us — we're online"` | Copy inside the `label` launcher. Ignored by the others. |
-| `appearance.branding` | bool | `false` | Wordmark on the `label` launcher. |
 | `pre_chat.enabled` | bool | `false` | Gate the thread behind a form. |
 | `pre_chat.fields` | `("name"\|"email"\|"phone")[]` | `["name","email"]` | Which fields to collect. Rendered in canonical order regardless of array order; unknown values are dropped. |
 | `channels` | `Channel[]` | `[]` | Messenger links offered beside the chat. See **Channel links**. |
 
-> `launcher: "label"`, `launcher_text` and `branding` are **not yet served** by
+> `launcher: "label"` and `launcher_text` are **not yet served** by
 > `GetWidgetConfigEndpoint` — the widget honours them and falls back cleanly, but the
 > columns and the dashboard form still need adding on the API side.
 
@@ -190,6 +193,33 @@ Usage is nominative — each mark links to that company's own service and nothin
 
 ---
 
+## Attribution
+
+A quiet "Powered by TalkyHub" credit sits at the very foot of the panel — under the composer or
+the pre-chat form — and a small wordmark rides on the `label` launcher. Both are **always on**
+and are not configurable: there is no `branding` field, so nothing in the config or the page can
+turn them off. The art comes from **threadhub-web-landing**, so the credit matches the site it
+links to: the mark is `public/favicon.svg` (drawn for small sizes), the wordmark is `Logo.tsx`'s
+"Talky" plus an outlined "Hub" badge. Colours are TalkyHub's, fixed — the credit never follows
+the customer's `--accent`. On the label launcher the wordmark switches to `tone="current"`,
+since a violet badge on a lime card would clash with both brands at once.
+
+| Practice | How |
+|---|---|
+| Never competes with the conversation | Last element in the panel, 11px, greyscale at rest; brand colour only on hover or focus (Chatwoot's pattern). |
+| Stays readable | "Powered by" uses `--muted`, above 4.5:1 on white even at its resting opacity. |
+| Attributed without tracking | `https://talkyhub.ru/?utm_source={embedding host}&utm_medium=widget&utm_campaign=powered_by`. No impression beacon, no pixel: nothing is recorded unless a visitor clicks. |
+| Safe for SEO | `rel="nofollow"`. A link injected into the footer of every embedding site is the textbook link scheme in Google's guidelines; passing no ranking signal protects talkyhub.ru from a penalty and keeps customers' pages clean. |
+| Safe for the host page | `noopener noreferrer`, `target="_blank"`, and an accessible name that says it opens a new tab. |
+
+It is still client code in an open shadow root, so a determined site could hide it. As with
+every vendor, that's a terms-of-service matter rather than a technical one. If removing the
+credit ever becomes a paid perk, the lever belongs in `PlanEntitlements` next to `Export` and
+`AllChannels`, with the config endpoint computing the field — not a dashboard toggle a free
+workspace can flip.
+
+---
+
 ## Colour
 
 One accent drives everything. [`src/core/theme.ts`](../src/core/theme.ts) derives, and sets
@@ -212,13 +242,15 @@ all need to move together. Deriving both stops from one accent keeps a single so
 truth. The deltas are reverse-engineered from the original hand-picked purple pair, so the
 stock accent still renders as designed.
 
-**Foreground is chosen by worst-case contrast across both stops**, not by the midpoint.
-Chatwoot's `getContrastingTextColor` does a YIQ threshold on one flat colour; a gradient
-needs the stricter test, or one end goes illegible. A light brand like `#B6E22F` gets ink
-(13.9:1 / 7.5:1); white would have been ~1.7:1. The tradeoff: a mid-tone blue like `#1f93ff`
-also gets ink (3.96 vs 2.71 for white) — more readable, but not the white-on-blue
-convention. If you'd rather have the convention, bias `onAccent()` toward white and accept
-the lower ratio.
+**Foreground is chosen by the accent's own luminance**, not by which candidate wins a contrast
+comparison. Above 0.45 the accent counts as light and takes dark ink; everything else takes
+white. Picking strictly by contrast is measurably more readable but flips mid-tone brands to
+dark text — `#1f93ff` scores 3.96 for ink against 2.71 for white — and dark text on a blue reads
+as broken next to every other chat widget. The threshold keeps white on blues, reds and purples
+while still giving ink to limes and yellows, where white genuinely fails (white on `#B6E22F` is
+about 1.7:1). The preference is overruled only when it would be unreadable at both gradient
+stops, and `appearance.on_accent` overrides it outright for a brand that needs something
+specific.
 
 Never hardcode a brand colour in `styles.css`. The values there are fallbacks for a root
 rendered without the inline properties; anything else will be purple on a customer's
@@ -234,9 +266,9 @@ lime-green site.
 | `bubble` | Accent-filled circle, swaps to a close glyph when open. | The character would fight the customer's brand. |
 | `label` | Greeting card: mascot + `launcher_text` + optional wordmark. | You want to *invite*, not just offer. The Jivo/Intercom shape; Chatwoot's `expanded_bubble` + `launcherTitle`. |
 
-The `label` card is dismissible, and the dismissal persists in the visitor's session — a
-card that wide covering the page on every visit forever is an ad, not an invitation. Once
-dismissed (or once the panel is opened) it collapses to the plain `bubble`.
+The `label` card has no dismiss control: opening the panel collapses it to a plain `bubble`,
+and closing brings the card back. The invitation is the whole reason to pick this launcher, so
+there is no state in which it is gone for good.
 
 ---
 
@@ -293,6 +325,28 @@ where they are the authority, with the widget's copy treated as a convenience.
 ---
 
 ## Conversation lifecycle
+
+### When the session opens
+
+`POST /session` is what creates the conversation, so the widget never calls it just because a
+page loaded. It waits for the visitor to do something:
+
+| Visitor | When `/session` is called |
+|---|---|
+| First-timer, no pre-chat form | The first time they **open** the widget |
+| First-timer, pre-chat form on | When they **submit** the form |
+| Returning visitor who already has a thread | On load — this resumes an existing conversation rather than creating one |
+
+Without this, everyone who merely landed on the page became a row in the agent console.
+
+The returning-visitor exception is deliberate: defer that one too and an agent's follow-up
+would never raise an unread badge, because the SSE stream would not be connected while the
+panel is shut. Resuming costs nothing, since the conversation already exists.
+
+One implementation note: the open-watcher reads a plain `gated` flag rather than the
+`preChatPending` signal. `submitPreChat()` clears that signal *before* handing over the
+answers, so a tracked read would re-run the effect and open the session with the pre-form
+contact instead of what the visitor typed.
 
 **Why the same thread comes back after a refresh.** On first load the widget mints a random
 `sourceId` and stores it in `localStorage` under `talkyhub:session:{token}`. `POST /session`
@@ -372,16 +426,19 @@ conversations read-only.
 Conventions this widget relies on. Breaking one usually shows up as a subtle production
 problem rather than a test failure.
 
-**Create the conversation lazily, on the first message.** ⚠️ *Still open.*
-`POST /session` calls `ConversationResolutionService.ResolveAsync` unconditionally, so every
-**page view** with the widget embedded creates a `Conversation` row and fires
-`ConversationCreated` — a visitor who never types still lands in the agent console. Chatwoot
-avoids this by making conversation creation a `before_action` on `POST /messages` only
-(`Api::V1::Widget::MessagesController#set_conversation`). The pre-chat gate added on the
-widget side defers this for pre-chat-enabled inboxes, but inboxes without pre-chat still
-create a conversation per page load. **Fix belongs in the API:** have `/session` resolve the
-contact and return any existing open conversation, and create one only when the first
-message arrives.
+**Create the conversation lazily, on the first message.** ⚠️ *Partly open.*
+`POST /session` calls `ConversationResolutionService.ResolveAsync` unconditionally, so any call
+to it creates a `Conversation` row and fires `ConversationCreated`. The widget no longer calls
+it on page load (see **Conversation lifecycle**), which removes the worst of it — a passer-by is
+no longer a row in the console. What remains is the visitor who **opens the widget, reads the
+greeting and types nothing**: that still creates a conversation, because opening the session is
+what creates it.
+
+Chatwoot avoids this entirely by making conversation creation a `before_action` on
+`POST /messages` only (`Api::V1::Widget::MessagesController#set_conversation`). **The rest of the
+fix belongs in the API:** have `/session` resolve the contact and return any existing open
+conversation, and create one only when the first message arrives. The widget already follows a
+`conversation_id` that appears later, so this needs no widget change.
 
 **Serve config the widget can fall back from.** Every field optional-with-a-default, `null`
 reserved for "off". Never send a partially-built object the widget has to repair.

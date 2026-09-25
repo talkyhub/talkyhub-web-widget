@@ -13,7 +13,6 @@ export const DEFAULT_CONFIG: WidgetConfig = {
     position: 'bottom-right',
     launcher: 'mascot',
     launcherText: 'Chat with us — we’re online',
-    branding: false,
   },
   preChat: { enabled: false, fields: ['name', 'email'] },
   channels: [],
@@ -28,10 +27,10 @@ interface RemoteConfig {
   reply_time?: string | null
   appearance?: {
     accent?: string
+    on_accent?: string | null
     position?: string
     launcher?: string
     launcher_text?: string | null
-    branding?: boolean
   }
   pre_chat?: { enabled?: boolean; fields?: string[] }
   channels?: { kind?: string; url?: string; label?: string; color?: string }[]
@@ -77,12 +76,13 @@ function preChatFields(fields: string[] | undefined, fallback: PreChatField[]): 
  */
 export function applyOverrides(config: WidgetConfig, overrides?: AppearanceOverrides): WidgetConfig {
   if (!overrides) return config
-  const { accent, position, launcher, launcherText } = overrides
+  const { accent, onAccent, position, launcher, launcherText } = overrides
   return {
     ...config,
     appearance: {
       ...config.appearance,
       accent: accent && parseHex(accent) ? accent : config.appearance.accent,
+      onAccent: onAccent && parseHex(onAccent) ? onAccent : config.appearance.onAccent,
       position: oneOf(position, POSITIONS, config.appearance.position),
       launcher: oneOf(launcher, LAUNCHERS, config.appearance.launcher),
       launcherText: launcherText?.trim() || config.appearance.launcherText,
@@ -92,6 +92,7 @@ export function applyOverrides(config: WidgetConfig, overrides?: AppearanceOverr
 
 export interface AppearanceOverrides {
   accent?: string
+  onAccent?: string
   position?: string
   launcher?: string
   launcherText?: string
@@ -193,6 +194,7 @@ export async function loadConfig(token?: string, apiBase = ''): Promise<WidgetCo
     if (!res.ok) return base
     const r = (await res.json()) as RemoteConfig
     const accent = r.appearance?.accent
+    const onAccent = r.appearance?.on_accent
     return {
       ...base,
       agentName: optional(r.agent_name, base.agentName) ?? base.agentName,
@@ -200,12 +202,12 @@ export async function loadConfig(token?: string, apiBase = ''): Promise<WidgetCo
       replyTime: optional(r.reply_time, base.replyTime),
       appearance: {
         accent: accent && parseHex(accent) ? accent : base.appearance.accent,
+        onAccent: onAccent && parseHex(onAccent) ? onAccent : base.appearance.onAccent,
         position: oneOf(r.appearance?.position, POSITIONS, base.appearance.position),
         launcher: oneOf(r.appearance?.launcher, LAUNCHERS, base.appearance.launcher),
         launcherText:
           optional(r.appearance?.launcher_text, base.appearance.launcherText) ??
           base.appearance.launcherText,
-        branding: r.appearance?.branding ?? base.appearance.branding,
       },
       preChat: {
         enabled: r.pre_chat?.enabled ?? base.preChat.enabled,

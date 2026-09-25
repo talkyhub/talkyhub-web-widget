@@ -1,6 +1,7 @@
 import type { Author, Contact, Message, WidgetConfig } from './types'
 import { rid } from './types'
 import { loadSession, saveSession } from './session'
+import type { Session } from './session'
 
 export interface TransportEvents {
   onMessage: (m: Message) => void
@@ -17,11 +18,20 @@ export interface TransportEvents {
   onRollover?: (conversationId: string, echoId?: string) => void
 }
 
+/** Everything POST /session can carry about who the visitor is. See docs/identity.md. */
+export interface SessionIdentity {
+  // Pre-chat answers and/or host prefill, resolved through the same ContactResolver every
+  // inbound channel uses.
+  contact?: Contact
+  // The host app's user id, trusted by the API only alongside a valid identifierHash.
+  identifier?: string
+  identifierHash?: string
+}
+
 export interface Transport {
-  // `contact` carries the pre-chat answers into POST /session, where the API resolves them
-  // through the same ContactResolver every inbound channel uses. Omitted when the pre-chat
-  // form is disabled — the visitor then stays anonymous until they identify themselves.
-  start(contact?: Contact): Promise<void>
+  start(identity?: SessionIdentity): Promise<void>
+  // The host identified its user after the session had already started (login in an SPA).
+  identify(identity: SessionIdentity): Promise<void>
   // echoId (optional) is the optimistic client id; the real transport sends it so the
   // server can round-trip it for reconciliation. MockTransport ignores it.
   send(text: string, echoId?: string): void
@@ -34,7 +44,9 @@ export class MockTransport implements Transport {
   private timers: number[] = []
   constructor(private ev: TransportEvents) {}
 
-  async start(_contact?: Contact): Promise<void> {}
+  async start(_identity?: SessionIdentity): Promise<void> {}
+
+  async identify(_identity: SessionIdentity): Promise<void> {}
 
   send(text: string, _echoId?: string): void {
     this.timers.push(window.setTimeout(() => this.ev.onTyping(true), 450))
@@ -61,6 +73,14 @@ function canned(text: string): string {
 }
 
 const SESSION_HEADER = 'X-Talkyhub-Session'
+
+interface SessionResponse {
+  session_token: string
+  conversation_id: string
+  messages?: WireMessage[]
+  // Optional (docs/identity.md): how the API treated the identity it was sent.
+  identity?: 'verified' | 'unverified' | 'anonymous'
+}
 
 // The API's WidgetMessage wire shape (snake_case). author ∈ visitor|agent|bot|system.
 interface WireMessage {
@@ -103,29 +123,67 @@ export class SseTransport implements Transport {
     return `${this.base}/api/v1/widget/${encodeURIComponent(this.token)}${path}`
   }
 
-  async start(contact?: Contact): Promise<void> {
-    const session = loadSession(this.token)
-    let data: { session_token: string; conversation_id: string; messages?: WireMessage[] }
+  async start(identity?: SessionIdentity): Promise<void> {
+    const data = await this.openSession(identity, loadSession(this.token))
+    if (!data) return
+    const history = (data.messages ?? []).map(mapWire)
+    if (history.length) this.ev.onHistory?.(history)
+    await this.openStream()
+  }
+
+  // setUser after the session already started. POST /session is idempotent for a source_id, so
+  // re-posting it with the new identity is how the details reach the API. If a verified identity
+  // lands on a DIFFERENT conversation — the user's thread from another device — follow it:
+  // replace the history and re-ticket the stream, which is still bound to the old one.
+  async identify(identity: SessionIdentity): Promise<void> {
+    const before = loadSession(this.token).conversationId
+    const data = await this.openSession(identity, loadSession(this.token))
+    if (!data || data.conversation_id === before) return
+    this.ev.onHistory?.((data.messages ?? []).map(mapWire))
+    this.es?.close()
+    this.es = null
+    await this.openStream()
+  }
+
+  private async openSession(identity: SessionIdentity | undefined, session: Session): Promise<SessionResponse | null> {
+    let data: SessionResponse
     try {
       const res = await fetch(this.url('/session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_id: session.sourceId, contact: contact ?? session.contact }),
+        body: JSON.stringify({
+          source_id: session.sourceId,
+          contact: identity?.contact ?? session.contact,
+          identifier: identity?.identifier,
+          identifier_hash: identity?.identifierHash,
+        }),
       })
-      if (!res.ok) return // widget stays usable with the client-rendered greeting
-      data = await res.json()
+      if (res.status === 401 && identity?.identifier) {
+        // On /session a 401 means the identity check failed (docs/identity.md). Say so loudly:
+        // silently degrading a signed-in user to an anonymous visitor would hide a broken
+        // integration until a customer complained their history vanished.
+        console.error(
+          "[TalkyHub] identifier_hash was rejected. It must be HMAC-SHA256 of the identifier, keyed with this inbox's identity secret, computed on your server. See docs/identity.md.",
+        )
+        return null
+      }
+      if (!res.ok) return null // widget stays usable with the client-rendered greeting
+      data = (await res.json()) as SessionResponse
     } catch {
-      return
+      return null
     }
     this.sessionToken = data.session_token
     saveSession(this.token, {
-      ...session,
+      ...loadSession(this.token),
       sessionToken: data.session_token,
       conversationId: data.conversation_id,
     })
-    const history = (data.messages ?? []).map(mapWire)
-    if (history.length) this.ev.onHistory?.(history)
-    await this.openStream()
+    // In optional-verification mode a wrong hash doesn't fail — the identifier is just ignored.
+    // This warning is the only place an integrator finds out.
+    if (identity?.identifier && data.identity && data.identity !== 'verified') {
+      console.warn(`[TalkyHub] the signed-in user was not verified (API: ${data.identity}); their history will not follow them across devices.`)
+    }
+    return data
   }
 
   private async openStream(): Promise<void> {
@@ -211,6 +269,9 @@ export class SseTransport implements Transport {
   stop(): void {
     this.es?.close()
     this.es = null
+    // A reset() on logout stops and restarts this transport. Clearing the token means a message
+    // sent in that gap is rejected, instead of landing in the previous user's conversation.
+    this.sessionToken = ''
   }
 }
 

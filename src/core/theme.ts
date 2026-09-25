@@ -114,12 +114,26 @@ function tintBase(c: Rgb): Rgb {
 const WHITE: Rgb = { r: 255, g: 255, b: 255 }
 const INK: Rgb = { r: 23, g: 20, b: 42 }
 
-// Text/icons drawn on the accent gradient. Both stops are checked and the candidate with
-// the better *worst-case* contrast wins: a light accent like #B6E22F needs dark ink, and
-// picking against the mid-tone alone would leave one end of the gradient unreadable.
-function onAccent(a: Rgb, b: Rgb): Rgb {
+// Above this relative luminance an accent counts as "light" and takes dark text.
+const LIGHT_ACCENT = 0.45
+
+/**
+ * Text and icons drawn on the accent gradient.
+ *
+ * The switch is the accent's own luminance, not whichever foreground scores higher on contrast.
+ * Strict max-contrast flips mid-tone brands — #1f93ff most obviously — to dark ink: measurably
+ * more readable, but it reads as broken next to every other chat widget, which is white on blue.
+ * The threshold keeps white on blues, reds and purples, and gives ink to limes, yellows and
+ * near-whites, where white genuinely fails (white on #B6E22F is about 1.7:1).
+ *
+ * The preference is only overruled when it would be unreadable at both stops. `--on-accent` can
+ * also be set outright from the config (`appearance.on_accent`) when a brand needs a specific one.
+ */
+function onAccent(base: Rgb, a: Rgb, b: Rgb): Rgb {
+  const preferred = luminance(base) > LIGHT_ACCENT ? INK : WHITE
+  const other = preferred === WHITE ? INK : WHITE
   const worst = (fg: Rgb) => Math.min(contrast(fg, a), contrast(fg, b))
-  return worst(WHITE) >= worst(INK) ? WHITE : INK
+  return worst(preferred) >= 2 ? preferred : other
 }
 
 export interface ThemeVars {
@@ -139,13 +153,15 @@ export const DEFAULT_ACCENT = '#6a4ce0'
  * CSS custom properties for one accent, applied inline on the widget root so every
  * surface — including the mascot's SVG gradient — follows the site's brand colour.
  * An unparseable accent falls back to the default rather than rendering a broken page.
+ * `onAccentOverride` forces the foreground drawn on that accent (appearance.on_accent).
  */
-export function themeVars(accent: string): ThemeVars {
+export function themeVars(accent: string, onAccentOverride?: string): ThemeVars {
   const base = parseHex(accent) ?? parseHex(DEFAULT_ACCENT)!
   const a = lighter(base)
   const b = darker(base)
-  const fg = onAccent(a, b)
-  const onWhite = fg === WHITE
+  // An explicit override wins outright; an unparseable one falls back to the computed choice.
+  const fg = (onAccentOverride ? parseHex(onAccentOverride) : null) ?? onAccent(base, a, b)
+  const onWhite = luminance(fg) > 0.5
   const tint = tintBase(base)
   const shadow = darker(tint)
   return {

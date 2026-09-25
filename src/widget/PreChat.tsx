@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import type { Contact, PreChatField, WidgetConfig } from '../core/types'
-import { submitPreChat } from '../core/store'
+import { prefill, submitPreChat } from '../core/store'
+import { remainingFields } from '../core/identity'
 import { validateEmail, validateName, validatePhone } from '../core/validate'
 import type { FieldResult } from '../core/validate'
 
@@ -22,6 +23,14 @@ const INPUT_TYPE: Record<PreChatField, string> = {
   phone: 'tel',
 }
 
+// Typed into a phone box, a letter can only ever become a validation error, so it is dropped as
+// it is typed instead of being accepted and then rejected. Everything a real number is written
+// with — +, spaces, dashes, dots, parens — still goes through, so pasting "+7 (999) 123-45-67"
+// works and normalises later.
+const SANITIZE: Partial<Record<PreChatField, (raw: string) => string>> = {
+  phone: (raw) => raw.replace(/[^\d+()\-.\s]/g, ''),
+}
+
 const VALIDATORS: Record<PreChatField, (raw: string) => FieldResult> = {
   name: validateName,
   email: validateEmail,
@@ -32,12 +41,15 @@ const VALIDATORS: Record<PreChatField, (raw: string) => FieldResult> = {
 // Submitting is what opens the session (POST /session with `contact`), so no conversation
 // reaches the agent console until the visitor has actually identified themselves.
 export function PreChat({ config }: { config: WidgetConfig }) {
-  const fields = config.preChat.fields
+  // Only what the host app hasn't already told us. `prefill` is a signal, so a TalkyHub.setUser()
+  // that lands while the form is open shrinks it live.
+  const fields = remainingFields(config.preChat.fields, prefill.value)
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState(false)
 
-  function set(field: PreChatField, value: string): void {
+  function set(field: PreChatField, raw: string): void {
+    const value = SANITIZE[field]?.(raw) ?? raw
     setValues((v) => ({ ...v, [field]: value }))
     // Re-check on every keystroke only once the visitor has already hit submit: flagging a
     // half-typed address as invalid while it is still being typed is just nagging.
@@ -58,7 +70,7 @@ export function PreChat({ config }: { config: WidgetConfig }) {
     if (Object.keys(next).length) return
     // The normalised value goes to the API, not the raw input: a phone typed as
     // `8 (999) 123-45-67` and one typed as `89991234567` must resolve to one contact.
-    submitPreChat(contact)
+    submitPreChat({ ...contact, ...prefill.value })
   }
 
   return (

@@ -127,7 +127,7 @@
             reply_time: null,
             appearance: {
               accent: state.accent, position: state.position, launcher: state.launcher,
-              launcher_text: 'Напишите нам, мы онлайн!', branding: true,
+              launcher_text: 'Напишите нам, мы онлайн!',
             },
             pre_chat: { enabled: !!state.prechat, fields: state.prechat ? state.prechat.split(',') : [] },
             channels: CHANNELS[state.channels] || [],
@@ -138,6 +138,16 @@
 
       // token stays 'demo' so createTransport() keeps using MockTransport for messages.
       if (!liveApi) window.talkyhubSettings = { token: 'demo', apiBase: '/mock' };
+
+      // ?user=full|partial|bad|null — exercise the host identity API (docs/identity.md).
+      const USERS = {
+        full: { identifier: 'user-42', identifier_hash: 'a'.repeat(64), name: 'Айгиз Искужин', email: 'aigiz@example.com', phone: '+7 999 123 45 67' },
+        partial: { identifier: 'user-42', name: 'Айгиз Искужин' },
+        bad: { name: 'Айгиз', email: 'aigiz@localhost', phone: '123', identifier_hash: 'nope' },
+      };
+      if (params.has('user')) window.talkyhubSettings.user = USERS[params.get('user')] ?? null;
+      // ?userjson=<json> — any user object, e.g. with a hash signed by a local stub API's secret.
+      if (params.has('userjson')) window.talkyhubSettings.user = JSON.parse(params.get('userjson'));
 
       function go(next) {
         const q = new URLSearchParams({ ...state, ...next });
