@@ -7,6 +7,7 @@ import {
   closeWidget,
   onStartSession,
   prefill,
+  prefillSkips,
   preChatPending,
   pushMessage,
   pushNotice,
@@ -88,8 +89,13 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       appliedKey = userKey(identity)
       // Host-supplied details win over anything stored or typed: the app's record of its own
       // signed-in user is more authoritative than a pre-chat answer from a past visit.
+      // A verified identity is the app's own record and outranks anything typed. Unverified
+      // prefill is only a suggestion, so whatever the visitor confirmed in the form wins.
+      const contact_ = identity.identifierHash
+        ? { ...contact, ...identity.contact }
+        : { ...identity.contact, ...contact }
       const session = {
-        contact: { ...contact, ...identity.contact },
+        contact: contact_,
         identifier: identity.identifier,
         identifierHash: identity.identifierHash,
       }
@@ -109,9 +115,11 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       if (started) return
       const s = loadSession(config.token)
       prefill.value = identity.contact
+      prefillSkips.value = !!identity.identifierHash
       // Once per conversation, not once per browser: with no conversation there is nothing to
       // resume, so ask again — and let them answer differently this time.
-      if (config.preChat.enabled && !s.conversationId && remainingFields(config.preChat.fields, identity.contact).length) {
+      const known = prefillSkips.value ? identity.contact : {}
+      if (config.preChat.enabled && !s.conversationId && remainingFields(config.preChat.fields, known).length) {
         preChatPending.value = true
         return
       }
@@ -144,10 +152,18 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       identity = next
       if (next.identifier) saveSession(config.token, { ...loadSession(config.token), identifier: next.identifier })
       prefill.value = next.contact
+      prefillSkips.value = !!next.identifierHash
 
       if (!started) {
         // Still on the form. If the host just supplied everything it asks for, skip it.
-        if (preChatPending.value && !remainingFields(config.preChat.fields, next.contact).length) submitPreChat({})
+        // Only a verified user is waved through; unverified prefill still waits for the click.
+        if (
+          preChatPending.value &&
+          next.identifierHash &&
+          !remainingFields(config.preChat.fields, next.contact).length
+        ) {
+          submitPreChat({})
+        }
         return
       }
       appliedKey = userKey(next)
@@ -167,9 +183,11 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     }
 
     onStartSession((contact?: Contact) => {
-      // Nothing is written to storage here: the answers travel to the server with the first
-      // message, and "have we already asked?" is answered by whether a conversation exists.
-      begin({ ...contact, ...identity.contact })
+      // Handed over raw: begin() owns the merge, and doing it here too made the host's claim win
+      // even in the unverified case, silently discarding a correction the visitor had just typed.
+      // Nothing is written to storage either — the answers travel with the first message, and
+      // "have we already asked?" is answered by whether a conversation exists.
+      begin(contact)
     })
 
     // Registered before boot() so a setUser queued before mount is applied to the first

@@ -23,6 +23,25 @@ Anything in a web page can be edited from devtools, so:
   `identifier`, anyone could run `TalkyHub.setUser({ identifier: '42' })` in the console and
   read user 42's support thread. The hash proves your backend issued that identifier.
 
+### Prefill without hashing
+
+An app that knows its user but cannot compute an HMAC — no backend to sign with, or not yet —
+can pass the details alone. The pre-chat form then appears with every field filled in, and the
+visitor confirms with a single click instead of typing anything:
+
+```js
+window.talkyhubSettings = { token: 'wgt_…', apiBase: '…', user: { name, email, phone } }
+```
+
+This is deliberately *not* the same as skipping the form. Verified details are already known to
+the API, so asking again would be pure friction. Unverified details are a claim the page made
+about itself — the API will not key a contact on them — so the visitor gets to see what is about
+to be sent on their behalf, and to correct it. Their edit wins; the page's claim does not
+silently overwrite it.
+
+What it does not buy you is continuity: without a verified identifier, a returning visitor on
+another device is a new visitor. Prefill removes typing, identity removes re-introduction.
+
 ## Host integration
 
 ### At boot, when you render the page for a signed-in user
@@ -113,8 +132,10 @@ it leaks.
 
 | Situation | Behaviour |
 |---|---|
-| Pre-chat on, host supplied every configured field | Form skipped; session opens with those details. |
-| Host supplied some of the fields | Form shows **only the missing ones**; answers are merged with the prefill. |
+| **Verified** user (identifier + hash), every configured field supplied | Form skipped entirely. |
+| **Verified** user, some fields supplied | Form shows only the missing ones. |
+| **Unverified** prefill (no hash) | Form shows **every** configured field, pre-filled and editable. One click on *Start chat* and they are through. |
+| Visitor edits a pre-filled value | Their correction wins over what the page claimed. |
 | A supplied field fails validation | Dropped with a console warning, and the form asks for it. Prefill is not a way around validation. |
 | `identifier_hash` isn't 64 hex characters, or has no `identifier` | Dropped with a warning. It could never verify, so it isn't sent to earn a guaranteed 401. |
 | `setUser` after the session started | Details re-posted to `/session`. If a verified identity resolves to a different conversation (the user's thread from another device), the widget switches to it: history replaced, stream re-ticketed. |

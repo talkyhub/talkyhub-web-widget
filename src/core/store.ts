@@ -30,9 +30,16 @@ export function submitPreChat(contact: Contact): void {
   sessionStarter?.(contact)
 }
 
-// Details the host app already knows about its signed-in user (TalkyHub.setUser). The pre-chat
-// form reads this to skip the fields it would otherwise ask for.
+// Details the host app already knows about its signed-in user (TalkyHub.setUser).
 export const prefill = signal<Contact>({})
+
+// Whether those details REPLACE the matching form fields or merely fill them in.
+//
+// A verified user (identifier + hash) is already known to the API, so asking again is pure
+// friction — those fields are dropped from the form. Unverified prefill is a claim the page
+// made about itself, so the fields stay visible with the values filled in: the visitor confirms
+// or corrects them in one click, and can see what is about to be sent on their behalf.
+export const prefillSkips = signal(false)
 
 // The host page's runtime API (window.TalkyHub, loader.ts) can be called before the widget has
 // mounted — the loader is async, and an app calls setUser the moment its own auth resolves.

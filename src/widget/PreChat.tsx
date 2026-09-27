@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
 import type { Contact, PreChatField, WidgetConfig } from '../core/types'
-import { prefill, submitPreChat } from '../core/store'
+import { prefill, prefillSkips, submitPreChat } from '../core/store'
 import { remainingFields } from '../core/identity'
 import { validateEmail, validateName, validatePhone } from '../core/validate'
 import type { FieldResult } from '../core/validate'
@@ -41,12 +41,19 @@ const VALIDATORS: Record<PreChatField, (raw: string) => FieldResult> = {
 // Submitting is what opens the session (POST /session with `contact`), so no conversation
 // reaches the agent console until the visitor has actually identified themselves.
 export function PreChat({ config }: { config: WidgetConfig }) {
-  // Only what the host app hasn't already told us. `prefill` is a signal, so a TalkyHub.setUser()
-  // that lands while the form is open shrinks it live.
-  const fields = remainingFields(config.preChat.fields, prefill.value)
+  // Verified details replace their fields; unverified ones only fill them in, so the form still
+  // shows every configured field. Both read signals, so a TalkyHub.setUser() landing while the
+  // form is open takes effect immediately.
+  const fields = prefillSkips.value
+    ? remainingFields(config.preChat.fields, prefill.value)
+    : config.preChat.fields
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState(false)
+
+  // Prefill is the starting value, not the state: keeping it out of `values` means a setUser
+  // arriving later still shows up, and an untouched field never goes stale.
+  const valueOf = (field: PreChatField) => values[field] ?? prefill.value[field] ?? ''
 
   function set(field: PreChatField, raw: string): void {
     const value = SANITIZE[field]?.(raw) ?? raw
@@ -62,7 +69,7 @@ export function PreChat({ config }: { config: WidgetConfig }) {
     const next: Record<string, string> = {}
     const contact: Contact = {}
     for (const f of fields) {
-      const { error, value } = VALIDATORS[f](values[f] ?? '')
+      const { error, value } = VALIDATORS[f](valueOf(f))
       if (error) next[f] = error
       else contact[f] = value
     }
@@ -70,7 +77,9 @@ export function PreChat({ config }: { config: WidgetConfig }) {
     if (Object.keys(next).length) return
     // The normalised value goes to the API, not the raw input: a phone typed as
     // `8 (999) 123-45-67` and one typed as `89991234567` must resolve to one contact.
-    submitPreChat({ ...contact, ...prefill.value })
+    // What the visitor confirmed wins over what the page claimed. For a verified user the two
+    // never overlap, since those fields were dropped from the form above.
+    submitPreChat({ ...prefill.value, ...contact })
   }
 
   return (
@@ -96,7 +105,7 @@ export function PreChat({ config }: { config: WidgetConfig }) {
               // its bubble can't be styled), but the right keyboard on mobile is free.
               inputMode={f === 'email' ? 'email' : f === 'phone' ? 'tel' : undefined}
               placeholder={PLACEHOLDERS[f]}
-              value={values[f] ?? ''}
+              value={valueOf(f)}
               aria-invalid={!!err}
               aria-describedby={err ? `${id}-err` : undefined}
               onInput={(e) => set(f, (e.currentTarget as HTMLInputElement).value)}
