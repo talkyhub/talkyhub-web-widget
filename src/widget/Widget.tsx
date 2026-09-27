@@ -47,7 +47,16 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       // An agent closed the thread. Say so rather than leaving the visitor to guess why
       // replies stopped — and don't disable the composer: the API reopens a freshly
       // resolved conversation, so typing again is a supported thing to do.
-      onResolved: (id) => pushNotice(`sys_resolved_${id}`, 'This conversation was marked resolved.'),
+      onResolved: (id) => {
+        pushNotice(`sys_resolved_${id}`, 'This conversation was marked resolved.')
+        // And stop treating it as live. `conversationId` is what tells the next page load to
+        // resume — but resuming a RESOLVED thread means POST /session, and the server has no
+        // open conversation to return, so it creates a fresh one before the visitor has typed
+        // anything. It would also skip the pre-chat form, since a conversation appears to exist.
+        // Sending still works on this page: the token lives in memory and the API reopens a
+        // freshly resolved thread inside its grace window.
+        saveSession(config.token, { ...loadSession(config.token), conversationId: undefined })
+      },
       // The server rolled this message into a new conversation. The divider is what keeps
       // the panel honest: everything above it belongs to the closed thread and no agent is
       // reading it any more.

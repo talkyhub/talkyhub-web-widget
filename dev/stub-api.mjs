@@ -37,9 +37,22 @@ function conv(key) {
   if (!S.convs.has(key)) S.convs.set(key, { id: randomUUID(), key, messages: [], resolved: false })
   return S.convs.get(key)
 }
+
+// Mirrors ConversationResolutionService.ReuseOpenOrCreate: an open conversation is reused, but a
+// RESOLVED one is never reused — the API creates a fresh one instead. Worth modelling, because it
+// is what turns an innocent-looking /session call into a brand new thread.
+function resolveConv(key) {
+  const existing = S.convs.get(key)
+  if (existing && !existing.resolved) return existing
+  if (existing) S.archive.push(existing)
+  const fresh = { id: randomUUID(), key, messages: [], resolved: false }
+  S.convs.set(key, fresh)
+  return fresh
+}
 function reset() {
   S = {
     convs: new Map(),
+    archive: [],
     byToken: new Map(),
     streams: new Map(),
     sessionLog: [],
@@ -114,7 +127,7 @@ http.createServer(async (req, res) => {
         identity = 'unverified' // identifier ignored entirely, resolved by source_id
       }
     }
-    const c = conv(key)
+    const c = resolveConv(key)
     return json(res, { session_token: issue(c), conversation_id: c.id, messages: c.messages, identity })
   }
 
@@ -188,7 +201,7 @@ http.createServer(async (req, res) => {
   if (p === '/__state') {
     return json(res, {
       sessionLog: S.sessionLog,
-      conversations: [...S.convs.values()].map((c) => ({ id: c.id, key: c.key, messages: c.messages.length, resolved: c.resolved })),
+      conversations: [...S.archive, ...S.convs.values()].map((c) => ({ id: c.id, key: c.key, messages: c.messages.length, resolved: c.resolved })),
       sign: { 'user-42': sign('user-42'), 'user-7': sign('user-7') },
     })
   }

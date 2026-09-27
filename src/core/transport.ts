@@ -117,6 +117,9 @@ export class SseTransport implements Transport {
   private es: EventSource | null = null
   private sessionToken = ''
   private armed: SessionIdentity | undefined
+  // The conversation this transport is bound to. Held here rather than read back from storage,
+  // which is only a hint for the next page load and is cleared when a conversation resolves.
+  private conversationId: string | undefined
   private opening: Promise<boolean> | null = null
   private readonly base: string
   private readonly token: string
@@ -170,7 +173,7 @@ export class SseTransport implements Transport {
     // Nothing is open yet, so there is nothing to re-post: the details ride along when the
     // visitor's first message opens the session.
     if (!this.sessionToken) return
-    const before = loadSession(this.token).conversationId
+    const before = this.conversationId
     const data = await this.openSession(identity, loadSession(this.token))
     if (!data || data.conversation_id === before) return
     this.ev.onHistory?.((data.messages ?? []).map(mapWire))
@@ -209,6 +212,7 @@ export class SseTransport implements Transport {
     // The token is NOT persisted: every load fetches a fresh one, so storing it would leave a
     // server-issued credential on disk for no reader.
     this.sessionToken = data.session_token
+    this.conversationId = data.conversation_id
     saveSession(this.token, { ...loadSession(this.token), conversationId: data.conversation_id })
     // In optional-verification mode a wrong hash doesn't fail — the identifier is just ignored.
     // This warning is the only place an integrator finds out.
@@ -286,6 +290,7 @@ export class SseTransport implements Transport {
     // new token/id and re-pointing the stream, which is still bound to the old conversation.
     if (data.session_token) {
       this.sessionToken = data.session_token
+      this.conversationId = data.conversation_id
       saveSession(this.token, { ...loadSession(this.token), conversationId: data.conversation_id })
       this.ev.onRollover?.(data.conversation_id, echoId)
       this.es?.close()
