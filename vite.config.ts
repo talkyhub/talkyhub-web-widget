@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineConfig } from 'vite'
+import type { Plugin } from 'vite'
 import preact from '@preact/preset-vite'
 
 const OUT_DIR = 'dist/widget/v1'
@@ -32,9 +33,13 @@ const COMMIT = buildCommit()
 // build also emits a content-hashed copy that never changes and can be cached forever, plus
 // a manifest naming the current one. nginx caches `loader.js` for minutes and
 // `loader.<hash>.js` for a year; a customer who needs a frozen build embeds the hashed name.
-function emitVersionedCopy() {
+function emitVersionedCopy(): Plugin {
   return {
     name: 'talkyhub-versioned-copy',
+    // Build only. Without this the hook also runs under vitest and the dev server, and a dev
+    // server holds pkg.version from whenever it started — so restarting one after a version
+    // bump rewrote dist/manifest.json with stale values while leaving loader.js untouched.
+    apply: 'build',
     closeBundle() {
       const source = join(OUT_DIR, 'loader.js')
       const code = readFileSync(source)
