@@ -1,5 +1,5 @@
 import { useMemo } from 'preact/hooks'
-import type { ChannelKind } from '../core/types'
+import type { Channel, ChannelKind } from '../core/types'
 
 // Brand marks for the channel links, drawn inline. They can't be <img> tags: the bundle is a
 // single self-contained IIFE served from our CDN onto arbitrary customer origins, so every
@@ -147,6 +147,14 @@ const OPTICAL: Partial<Record<ChannelKind, number>> = {
   max: 1.15,
   email: 1.1,
   phone: 1.35,
+}
+
+/** The disc behind a channel's mark: an explicit colour, a brand gradient, or the flat brand. */
+export function channelBackground(c: Channel): string {
+  if (c.color) return c.color
+  const gradient = BRAND_GRADIENT[c.kind]
+  if (gradient) return `linear-gradient(135deg, ${gradient.join(', ')})`
+  return BRAND_COLOR[c.kind]
 }
 
 export function BrandMark({ kind, label, size }: { kind: ChannelKind; label: string; size?: number }) {

@@ -130,7 +130,7 @@ multi-channel pattern, for a visitor who would rather continue somewhere they al
 |---|---|---|
 | `url` | **yes** | `http:`, `https:`, `mailto:` or `tel:` only — see below. |
 | `kind` | no | `telegram`, `whatsapp`, `vk`, `max`, `instagram`, `email`, `phone`, `link`. **Inferred from the URL when omitted** or unrecognised. |
-| `label` | no | Accessible name and tooltip. Defaults to the brand's name, or the host for an unknown one. |
+| `label` | no | The channel's name. Shown as a tooltip on the round row and as the text of each row in the launcher menu. Defaults to the brand's name, or the host for an unknown one. |
 | `color` | no | Hex override, for a brand with no built-in mark. Ignored for full-bleed marks. |
 
 ### `kind` is optional
@@ -155,6 +155,13 @@ An unresolved channel is **not** a dead placeholder: it is labelled with its hos
 (`signal.me`), which is what the visitor recognises, and the monogram takes its initial from
 that — an `S`, not the letter `L` from the word "Link". An explicit `kind` still wins over
 inference, and an explicit `label` over both.
+
+**Where the label is read.** A row of bare marks can't show names, so `label` surfaces two ways:
+
+- **Tooltip** on hover or keyboard focus over a round button. Only on the floating row — inside
+  the panel it would be clipped by the panel's own `overflow`, so there the native `title`
+  carries it instead.
+- **Launcher menu**, below.
 
 **Where they appear.** Only while the panel is open — the row is an alternative to the
 conversation, so it belongs where the conversation already has the visitor's attention. On
@@ -193,6 +200,28 @@ Two marks don't follow the plain glyph-on-a-colour pattern:
 Usage is nominative — each mark links to that company's own service and nothing else.
 
 ---
+
+### The launcher menu
+
+With `launcher: "label"` and at least one channel, hovering the card unfolds a list above it —
+one row per channel with its mark and its name, and a final **Write in chat** row that opens the
+panel. Jivo's pattern, and the only place a configured `label` is read in full.
+
+Hover alone would make it keyboard-unreachable, so it opens on `:hover` **or** `:focus-within`,
+and the menu follows the launcher in the DOM: focusing the card reveals it and Tab walks
+straight into the rows. A menu placed before the button could offer neither.
+
+Two details that are easy to get wrong:
+
+- **The gap between card and menu** would drop `:hover` as the pointer crosses it. A bridging
+  strip appears *only while hovering* (`.tk-launch-wrap:hover::before`) to cover it — it can't
+  live on the menu itself, which clips its own overflow.
+- **Touch devices have no hover**, so the menu is gated behind `@media (hover: hover) and
+  (pointer: fine)`. Tapping the card opens the chat, and the channels stay reachable from the
+  row inside the panel.
+
+`Write in chat` is currently English regardless of the rest of the config — see the
+localisation item on the README roadmap.
 
 ## Attribution
 

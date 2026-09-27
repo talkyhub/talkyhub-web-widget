@@ -104,10 +104,10 @@ http.createServer(async (req, res) => {
       },
       pre_chat: c.preChat,
       channels: [
-        { kind: 'telegram', url: 'https://t.me/verificahub' },
-        { kind: 'whatsapp', url: 'https://wa.me/79991234567' },
-        { kind: 'vk', url: 'https://vk.ru/verificahub' },
-        { kind: 'max', url: 'https://max.ru/verificahub' },
+        { kind: 'telegram', url: 'https://t.me/verificahub', label: 'Новости в Telegram' },
+        { kind: 'whatsapp', url: 'https://wa.me/79991234567', label: 'WhatsApp' },
+        { kind: 'vk', url: 'https://vk.ru/verificahub', label: 'Сообщение ВКонтакте' },
+        { kind: 'max', url: 'https://max.ru/channel_verificahub', label: 'Новости в Max' },
       ],
     })
   }

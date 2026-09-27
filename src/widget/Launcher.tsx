@@ -3,6 +3,7 @@ import { isOpen, unread, toggleWidget } from '../core/store'
 import { Mascot } from './Mascot'
 import { ChatIcon, CloseIcon } from './icons'
 import { Wordmark } from './Credit'
+import { LauncherMenu } from './LauncherMenu'
 
 /**
  * Which shape is actually on screen right now. Exported because the widget root carries it as a
@@ -47,6 +48,9 @@ export function Launcher({ config }: { config: WidgetConfig }) {
           </span>
           {unread.value > 0 && <span class="tk-badge">{unread.value}</span>}
         </button>
+        {/* After the button in the DOM on purpose: focusing the card reveals the menu and Tab
+            then walks into it, which a menu rendered before the button could not offer. */}
+        {config.channels.length > 0 && <LauncherMenu channels={config.channels} onChat={toggleWidget} />}
       </div>
     )
   }
