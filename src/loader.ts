@@ -3,6 +3,7 @@ import { Widget } from './widget/Widget'
 import { applyOverrides, loadConfig } from './core/config'
 import type { AppearanceOverrides } from './core/config'
 import { callHost } from './core/store'
+import { BUILD } from './core/version'
 import type { HostUser } from './core/identity'
 import css from './widget/styles.css?inline'
 
@@ -25,6 +26,8 @@ interface Settings {
 // mounted are queued and replayed (store.callHost). Code that may run before this script has
 // even loaded should pass `user` in talkyhubSettings instead, or wait for `talkyhub:ready`.
 const api = {
+  /** The running build, e.g. `0.0.1+ab12cd3`. Ask a customer to read this out of the console. */
+  version: BUILD,
   /** Identify the signed-in user. `null` is a logout. A no-op for the same user and details. */
   setUser(user: HostUser | null): void {
     callHost({ name: 'setUser', user })

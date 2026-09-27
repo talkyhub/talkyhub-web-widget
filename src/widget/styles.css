@@ -105,13 +105,13 @@
 .tk-ch-mono { font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
 
 /* floating: a row to the left of the launcher, riding on its baseline */
-.tk-channels.is-float { position: fixed; right: 104px; bottom: 39px; z-index: 2147483000; }
+.tk-channels.is-float { position: fixed; right: 92px; bottom: 33px; z-index: 2147483000; }
 /* `backwards`, not `both`: the fill holds the hidden state during the stagger delay but releases
    afterwards, so the hover lift below still applies. */
 .tk-channels.is-float .tk-ch { animation: tk-ch-in 0.3s cubic-bezier(0.2, 0.8, 0.25, 1) backwards; }
 .tk.launcher-bubble .tk-channels.is-float { right: 88px; bottom: 31px; }
 .tk.launcher-label .tk-channels.is-float { right: 20px; bottom: 78px; }
-.tk.is-left .tk-channels.is-float { right: auto; left: 104px; }
+.tk.is-left .tk-channels.is-float { right: auto; left: 92px; }
 .tk.is-left.launcher-bubble .tk-channels.is-float { right: auto; left: 88px; }
 .tk.is-left.launcher-label .tk-channels.is-float { right: auto; left: 20px; }
 @keyframes tk-ch-in {
@@ -134,6 +134,9 @@
 @keyframes tk-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 .tk.is-modal .tk-panel {
   top: 50%; left: 50%; right: auto; bottom: auto;
+  width: 448px;
+  /* No launcher below it to clear, so it only needs a symmetric margin. */
+  max-height: calc(100vh - 80px);
   transform-origin: center; transform: translate(-50%, -48%) scale(0.97);
 }
 .tk.is-modal .tk-panel.is-open { transform: translate(-50%, -50%); }

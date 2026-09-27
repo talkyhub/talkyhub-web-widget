@@ -137,10 +137,19 @@ Embed on a customer site (token from `POST /api/v1/workspaces/{ws}/channels/webc
 ## Roadmap
 
 1. **Offline form** — when the inbox is outside business hours (pre-chat itself is done).
-2. **Identity, API side** — the widget ships `TalkyHub.setUser` / `reset` and sends
-   `identifier` + `identifier_hash`; verification is specified in [docs/identity.md](docs/identity.md).
-3. **iframe isolation** + lazy-loaded panel chunk (keep the loader small).
-4. **Localisation** — the pre-chat labels and composer placeholder are still English-only.
-5. **Attachments & emoji** — the composer renders both buttons but keeps them `disabled`; they
+2. **iframe isolation** + lazy-loaded panel chunk (keep the loader small).
+3. **Localisation** — the pre-chat labels and composer placeholder are still English-only.
+4. **Attachments & emoji** — the composer renders both buttons but keeps them `disabled`; they
    go live when file upload and an emoji picker exist. A button that silently does nothing is
    worse than one that says it isn't ready.
+5. **React / Vue SDK** — a bundler-installable package (`@talkyhub/widget-react`, `-vue`) wrapping
+   this same core, for apps that would rather mount a component than inject a script tag. It is a
+   separate artifact from the CDN bundle and, more importantly, a different versioning contract:
+   script-tag integrators never choose a version and auto-update within minutes, but package
+   consumers **pin** one. That is what would force real semver, a changelog and tagged GitHub
+   releases — none of which the CDN bundle needs today, where content hashes and an additive
+   rsync already cover identity and rollback (see
+   [docs/widget.md](docs/widget.md#releases-and-cdn-caching)).
+
+   Worth settling before starting: whether the package ships its own copy of the widget or just
+   loads the CDN script, since only the first actually pins behaviour for the consumer.

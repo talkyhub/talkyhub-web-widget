@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -5,6 +6,26 @@ import { defineConfig } from 'vite'
 import preact from '@preact/preset-vite'
 
 const OUT_DIR = 'dist/widget/v1'
+
+const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
+
+// Which commit produced these bytes. Until now a live bundle could not be traced back to one:
+// manifest.json recorded the content hash, which says WHICH bytes are serving but nothing about
+// where they came from. CI sets GITHUB_SHA; locally fall back to git; 'dev' when neither exists
+// (a build from a tarball, say).
+function buildCommit(): string {
+  const sha = process.env.GITHUB_SHA
+  if (sha) return sha.slice(0, 7)
+  try {
+    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
+    return 'dev'
+  }
+}
+
+const COMMIT = buildCommit()
 
 // The embed URL has to stay stable — it is pasted into customers' HTML and we can't ask them
 // to edit it per release — but a file that changes must not be cached immutably. So each
@@ -23,6 +44,8 @@ function emitVersionedCopy() {
         join(OUT_DIR, 'manifest.json'),
         JSON.stringify(
           {
+            version: pkg.version,
+            commit: COMMIT,
             loader: `loader.${hash}.js`,
             sha256: createHash('sha256').update(code).digest('base64'),
             bytes: code.length,
@@ -44,6 +67,11 @@ function emitVersionedCopy() {
 //                   site loads with one <script data-token=…>. Preact + CSS are inlined.
 export default defineConfig({
   plugins: [preact(), emitVersionedCopy()],
+  // Inlined at build time so the running bundle can say what it is — see src/core/version.ts.
+  define: {
+    __WIDGET_VERSION__: JSON.stringify(pkg.version),
+    __WIDGET_COMMIT__: JSON.stringify(COMMIT),
+  },
   build: {
     lib: {
       entry: 'src/loader.ts',

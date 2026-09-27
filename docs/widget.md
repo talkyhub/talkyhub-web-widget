@@ -377,6 +377,35 @@ one.
 typing is not captured at all. If those leads matter more than empty conversations, make
 `submitPreChat` open the session instead of arming it.
 
+### Asked once per conversation, not once per browser
+
+Whether the pre-chat form appears comes down to one question: does this visitor have a
+conversation? `conversationId` in the stored session is the entire test.
+
+| Situation | Form? |
+|---|---|
+| No conversation yet | **Yes** — and they may answer differently this time |
+| Conversation live, across any number of reloads and page navigations | No — show them their thread |
+| Previous conversation resolved and rolled over | **Yes**, it is a new conversation |
+
+The distinction matters because the widget reloads on **every page navigation**, not only on a
+refresh. A browser-scoped "already answered" flag would either put the form in front of someone
+mid-conversation on every page view, or outlive the conversation it described and carry stale
+details into the next one. Keying it to the conversation avoids both, and costs less code than
+the flag did.
+
+Nothing about the answers is persisted — they travel to the server with the first message. The
+stored session is exactly three opaque fields:
+
+```json
+{ "sourceId": "src_…", "conversationId": "…", "identifier": "…" }
+```
+
+No personal data, because the server holds the contact keyed to `sourceId`, and no credential,
+because the session token is fetched fresh on every load and kept in memory. That is also why
+there is no expiry logic: the only thing that can go stale is a `conversationId`, and the
+resolved-and-cold rollover already retires those.
+
 **Why the same thread comes back after a refresh.** On first load the widget mints a random
 `sourceId` and stores it in `localStorage` under `talkyhub:session:{token}`. `POST /session`
 resolves that id through `ContactResolver` → `ConversationResolutionService`, which reuses the
@@ -509,10 +538,41 @@ Each build writes three files to `dist/widget/v1/`:
 |---|---|---|
 | `loader.js` | `max-age=300, stale-while-revalidate=86400` | Everyone. The stable embed URL, overwritten every release. |
 | `loader.<hash>.js` | `max-age=31536000, immutable` | A customer pinning an exact build; us, rolling back. |
-| `manifest.json` | short | Tells you which hash is live, its sha256 and build time. |
+| `manifest.json` | short | What is live: version, commit, hash, sha256 and build time. |
 
 The deploy rsyncs additively, so **every past hashed build stays reachable** — a rollback is
 pointing at an older hash, not a rebuild.
+
+### Identifying a build
+
+Every build is stamped with the `package.json` version and the commit that produced it, so a
+bundle in the wild can always be traced back to source:
+
+```bash
+curl -s https://cdn.talkyhub.ru/widget/v1/manifest.json
+# { "version": "1.0.0", "commit": "99385e2", "loader": "loader.16fbca3e8521.js", ... }
+```
+
+and from a customer's browser console, which is the one to ask for on a bug report:
+
+```js
+window.TalkyHub.version   // "1.0.0+99385e2"
+```
+
+**The major tracks the path.** `1.x.y` is served from `/widget/v1/`, so the two numbers mean the
+same thing: a breaking change bumps both, and every minor and patch stays on the same URL that
+customers already embed. That is the whole reason a major is rare here — it costs every
+integrator an edit.
+
+The commit comes from `GITHUB_SHA` in CI, falls back to `git rev-parse` locally, and is `dev`
+when neither exists. The content hash still identifies the *bytes*; this identifies the
+*source*, which is what a hash alone could never tell you.
+
+There are deliberately **no git tags or GitHub Releases**. Rollback is already covered by the
+hashed builds plus the additive rsync, the CDN keeps every past build, and integrators never
+choose a version — so release ceremony would add process without answering a question anyone
+is asking. That changes when the React/Vue SDK lands: package consumers pin versions, which
+forces real semver and a changelog. See the roadmap in the README.
 
 ### The bug this replaced
 

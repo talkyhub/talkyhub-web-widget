@@ -120,11 +120,13 @@ it leaks.
 | `setUser` after the session started | Details re-posted to `/session`. If a verified identity resolves to a different conversation (the user's thread from another device), the widget switches to it: history replaced, stream re-ticketed. |
 | A **different** `identifier` than this browser's session belongs to | Treated as a user switch: visitor session wiped, panel closed, started fresh as the new user. |
 | Anonymous → identified | Not a switch. The anonymous thread is **not** merged into the account; on a shared device it may be someone else's. |
-| `reset()` or `setUser(null)` | New `source_id`, no token, no conversation, no stored answers; panel closed. |
+| `reset()` or `setUser(null)` | New `source_id`, no conversation, no identifier; panel closed. |
 | `/session` returns 401 while an identifier was sent | `console.error` saying the hash was rejected. The widget does **not** quietly fall back to anonymous, which would hide a broken integration. |
 
-Kept in `localStorage` under `talkyhub:session:{token}`: the `identifier` (to detect a switch)
-and the contact details. **`identifier_hash` is never persisted**; you re-supply it each load.
+Kept in `localStorage` under `talkyhub:session:{token}`: exactly `sourceId`, `conversationId`
+and `identifier` (the last only to detect a user switch). No personal data — the server holds
+the contact, keyed to `sourceId` — and no credential: **`identifier_hash` is never persisted**
+and neither is the session token, which is fetched fresh on every load and kept in memory.
 
 ## API contract (threadhub-api)
 

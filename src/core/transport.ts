@@ -187,7 +187,7 @@ export class SseTransport implements Transport {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           source_id: session.sourceId,
-          contact: identity?.contact ?? session.contact,
+          contact: identity?.contact,
           identifier: identity?.identifier,
           identifier_hash: identity?.identifierHash,
         }),
@@ -206,12 +206,10 @@ export class SseTransport implements Transport {
     } catch {
       return null
     }
+    // The token is NOT persisted: every load fetches a fresh one, so storing it would leave a
+    // server-issued credential on disk for no reader.
     this.sessionToken = data.session_token
-    saveSession(this.token, {
-      ...loadSession(this.token),
-      sessionToken: data.session_token,
-      conversationId: data.conversation_id,
-    })
+    saveSession(this.token, { ...loadSession(this.token), conversationId: data.conversation_id })
     // In optional-verification mode a wrong hash doesn't fail — the identifier is just ignored.
     // This warning is the only place an integrator finds out.
     if (identity?.identifier && data.identity && data.identity !== 'verified') {
@@ -288,11 +286,7 @@ export class SseTransport implements Transport {
     // new token/id and re-pointing the stream, which is still bound to the old conversation.
     if (data.session_token) {
       this.sessionToken = data.session_token
-      saveSession(this.token, {
-        ...loadSession(this.token),
-        sessionToken: data.session_token,
-        conversationId: data.conversation_id,
-      })
+      saveSession(this.token, { ...loadSession(this.token), conversationId: data.conversation_id })
       this.ev.onRollover?.(data.conversation_id, echoId)
       this.es?.close()
       this.es = null

@@ -100,12 +100,14 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       if (started) return
       const s = loadSession(config.token)
       prefill.value = identity.contact
-      if (config.preChat.enabled && !s.preChatDone && remainingFields(config.preChat.fields, identity.contact).length) {
+      // Once per conversation, not once per browser: with no conversation there is nothing to
+      // resume, so ask again — and let them answer differently this time.
+      if (config.preChat.enabled && !s.conversationId && remainingFields(config.preChat.fields, identity.contact).length) {
         preChatPending.value = true
         return
       }
       preChatPending.value = false
-      begin(s.contact)
+      begin()
     }
 
     // Forget this browser's visitor and start again — as `next` when a different user signs in,
@@ -156,9 +158,9 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     }
 
     onStartSession((contact?: Contact) => {
-      const merged = { ...contact, ...identity.contact }
-      saveSession(config.token, { ...loadSession(config.token), contact: merged, preChatDone: true })
-      begin(merged)
+      // Nothing is written to storage here: the answers travel to the server with the first
+      // message, and "have we already asked?" is answered by whether a conversation exists.
+      begin({ ...contact, ...identity.contact })
     })
 
     // Registered before boot() so a setUser queued before mount is applied to the first

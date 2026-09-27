@@ -1,19 +1,18 @@
-import type { Contact } from './types'
-
-// Per-visitor session, persisted in localStorage and scoped by widget token so two
-// widgets on the same origin don't collide. `sourceId` is the stable visitor id
-// (Chatwoot's pubsub_token analogue) sent to the API to resolve/create the contact;
-// `sessionToken` is the server-issued, signed handle returned by POST /session that
-// authorizes subsequent message/realtime calls for this visitor's conversation.
+// Per-visitor session, persisted in localStorage and scoped by widget token so two widgets on
+// the same origin don't collide.
+//
+// Deliberately three opaque fields and no more — every browser-scoped store outlives the thing
+// it describes, so the less it holds the fewer ways it can go stale. In particular it holds no
+// personal data (the server has the contact, keyed to sourceId) and no credential (the session
+// token is fetched fresh on every load and lives only in memory).
 export interface Session {
+  // Stable visitor id, Chatwoot's pubsub_token analogue, sent to the API to resolve the contact.
   sourceId: string
-  sessionToken?: string
+  // Written once the server has actually created a conversation. Doubles as "this visitor has a
+  // live thread", which is what decides whether the pre-chat form appears: asked once per
+  // CONVERSATION, not once per browser. A visitor who never sent anything is asked again, and
+  // can answer differently.
   conversationId?: string
-  // Pre-chat answers, kept so a returning visitor isn't asked for their details again.
-  // `preChatDone` is separate from `contact` because a form of all-optional fields can be
-  // submitted empty and still counts as answered.
-  contact?: Contact
-  preChatDone?: boolean
   // The host app's signed-in user this session belongs to (TalkyHub.setUser), kept so a
   // DIFFERENT user on the same browser is detected and gets a fresh session. The
   // identifier_hash is deliberately never stored — the host re-supplies it on every load.
@@ -55,9 +54,9 @@ export function saveSession(token: string, session: Session): void {
 }
 
 /**
- * Forget this browser's visitor entirely: new sourceId, no token, no conversation, no stored
- * answers. What logout has to do on a shared device, so the next person to open the widget
- * cannot see the previous one's thread. Chatwoot's `$chatwoot.reset()` equivalent.
+ * Forget this browser's visitor entirely: new sourceId, no conversation, no identifier. What
+ * logout has to do on a shared device, so the next person to open the widget cannot see the
+ * previous one's thread. Chatwoot's `$chatwoot.reset()` equivalent.
  */
 export function resetSession(token: string): Session {
   try {
