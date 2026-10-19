@@ -29,7 +29,10 @@ export interface SessionIdentity {
 }
 
 export interface Transport {
-  start(identity?: SessionIdentity): Promise<void>
+  // Resume the conversation this browser remembers. Resolves false when the server has nothing
+  // open to resume (it was resolved while nobody was listening): the stored conversationId is
+  // forgotten and nothing is created — the visitor's next message opens a new one.
+  start(identity?: SessionIdentity): Promise<boolean>
   // Remember who the visitor is without opening anything. The session — and with it the
   // conversation — is then opened by their first message. See SseTransport.deliver().
   arm(identity?: SessionIdentity): void
@@ -47,7 +50,9 @@ export class MockTransport implements Transport {
   private timers: number[] = []
   constructor(private ev: TransportEvents) {}
 
-  async start(_identity?: SessionIdentity): Promise<void> {}
+  async start(_identity?: SessionIdentity): Promise<boolean> {
+    return true
+  }
 
   arm(_identity?: SessionIdentity): void {}
 
@@ -78,6 +83,13 @@ function canned(text: string): string {
 }
 
 const SESSION_HEADER = 'X-Talkyhub-Session'
+
+// How an attempt to open the session ended. `none` is a resume the server answered with 204:
+// there is no open conversation to re-bind to, and by design it created nothing.
+type OpenOutcome = 'open' | 'none' | 'failed'
+
+// Stream reconnect backoff: 1s, 2s, 4s … capped.
+const STREAM_RETRY_MAX_MS = 30_000
 
 interface SessionResponse {
   session_token: string
@@ -120,7 +132,9 @@ export class SseTransport implements Transport {
   // The conversation this transport is bound to. Held here rather than read back from storage,
   // which is only a hint for the next page load and is cleared when a conversation resolves.
   private conversationId: string | undefined
-  private opening: Promise<boolean> | null = null
+  private opening: Promise<OpenOutcome> | null = null
+  private streamRetries = 0
+  private streamTimer: number | undefined
   private readonly base: string
   private readonly token: string
 
@@ -133,10 +147,12 @@ export class SseTransport implements Transport {
     return `${this.base}/api/v1/widget/${encodeURIComponent(this.token)}${path}`
   }
 
-  /** Open the session now. Used to resume a visitor who already has a conversation. */
-  async start(identity?: SessionIdentity): Promise<void> {
+  /** Re-bind now to the conversation this browser remembers. Never creates one. */
+  async start(identity?: SessionIdentity): Promise<boolean> {
     this.armed = identity
-    await this.ensureOpen()
+    if (this.sessionToken) return true
+    this.opening ??= this.open(true)
+    return (await this.opening) !== 'none'
   }
 
   /** Hold the identity; the first message opens the session with it. */
@@ -145,23 +161,25 @@ export class SseTransport implements Transport {
   }
 
   // Concurrent sends must not each POST /session, and a failed attempt has to be retryable, so
-  // the in-flight promise is cached and cleared on failure.
+  // the in-flight promise is cached and cleared on failure. A resume still in flight is awaited
+  // first: if it found nothing open, this message is what opens the conversation.
   private async ensureOpen(): Promise<boolean> {
     if (this.sessionToken) return true
-    this.opening ??= this.open()
-    return this.opening
+    if (this.opening && (await this.opening) === 'open') return true
+    this.opening ??= this.open(false)
+    return (await this.opening) === 'open'
   }
 
-  private async open(): Promise<boolean> {
-    const data = await this.openSession(this.armed, loadSession(this.token))
-    if (!data) {
+  private async open(resume: boolean): Promise<OpenOutcome> {
+    const data = await this.openSession(this.armed, loadSession(this.token), resume)
+    if (data === 'none' || !data) {
       this.opening = null
-      return false
+      return data ?? 'failed'
     }
     const history = (data.messages ?? []).map(mapWire)
     if (history.length) this.ev.onHistory?.(history)
     await this.openStream()
-    return true
+    return 'open'
   }
 
   // setUser after the session already started. POST /session is idempotent for a source_id, so
@@ -174,15 +192,22 @@ export class SseTransport implements Transport {
     // visitor's first message opens the session.
     if (!this.sessionToken) return
     const before = this.conversationId
-    const data = await this.openSession(identity, loadSession(this.token))
-    if (!data || data.conversation_id === before) return
+    const data = await this.openSession(identity, loadSession(this.token), false)
+    if (!data || data === 'none' || data.conversation_id === before) return
     this.ev.onHistory?.((data.messages ?? []).map(mapWire))
     this.es?.close()
     this.es = null
     await this.openStream()
   }
 
-  private async openSession(identity: SessionIdentity | undefined, session: Session): Promise<SessionResponse | null> {
+  // `resume` asks the API to re-bind to an open conversation and create nothing. Without it a
+  // page load after the thread was resolved — by an agent, or auto-resolve, while this widget
+  // wasn't connected to hear about it — would mint a brand-new, empty conversation.
+  private async openSession(
+    identity: SessionIdentity | undefined,
+    session: Session,
+    resume: boolean,
+  ): Promise<SessionResponse | 'none' | null> {
     let data: SessionResponse
     try {
       const res = await fetch(this.url('/session'), {
@@ -193,8 +218,13 @@ export class SseTransport implements Transport {
           contact: identity?.contact,
           identifier: identity?.identifier,
           identifier_hash: identity?.identifierHash,
+          resume: resume || undefined,
         }),
       })
+      if (resume && res.status === 204) {
+        saveSession(this.token, { ...loadSession(this.token), conversationId: undefined })
+        return 'none'
+      }
       if (res.status === 401 && identity?.identifier) {
         // On /session a 401 means the identity check failed (docs/identity.md). Say so loudly:
         // silently degrading a signed-in user to an anonymous visitor would hide a broken
@@ -223,14 +253,26 @@ export class SseTransport implements Transport {
   }
 
   private async openStream(): Promise<void> {
+    window.clearTimeout(this.streamTimer)
+    this.streamTimer = undefined
     try {
       const res = await fetch(this.url('/realtime/ticket'), {
         method: 'POST',
         headers: { [SESSION_HEADER]: this.sessionToken },
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        // 4xx: the session itself is no good (expired, conversation gone) — another ticket won't
+        // fix it. 5xx is the server having a moment; try again.
+        if (res.status >= 500) this.retryStream()
+        return
+      }
       const { stream_url } = (await res.json()) as { stream_url: string }
       const es = new EventSource(`${this.base}${stream_url}`)
+      es.onopen = () => {
+        // A reconnect, not the first connect: anything sent while the stream was down was missed.
+        if (this.streamRetries > 0) void this.catchUp()
+        this.streamRetries = 0
+      }
       // Server frames outbound messages as `event: message` (default type) with a JSON WidgetMessage body.
       es.onmessage = (e) => this.onWire(e.data)
       // Resolution is a NAMED frame (`event: conversation.resolved`), so onmessage never sees
@@ -244,12 +286,41 @@ export class SseTransport implements Transport {
           /* ignore malformed frame */
         }
       })
+      // EventSource does reconnect on its own — but to the same URL, and the ticket in it is only
+      // good for a minute. The server also ends every stream after 15 minutes. So the browser's
+      // retry gets a 401, which EventSource treats as final, and the widget would go deaf for the
+      // rest of the page: no agent replies, and no resolution notice — which is how a stored
+      // conversationId outlived its conversation. Close it and come back with a fresh ticket.
       es.onerror = () => {
-        /* EventSource reconnects on its own; nothing to do */
+        if (this.es !== es) return // already replaced (rollover / identify)
+        es.close()
+        this.es = null
+        this.retryStream()
       }
       this.es = es
     } catch {
-      /* offline — POSTs still work, just no live inbound */
+      // offline — POSTs still work; keep trying for live inbound
+      this.retryStream()
+    }
+  }
+
+  private retryStream(): void {
+    if (!this.sessionToken || this.streamTimer !== undefined) return
+    const delay = Math.min(STREAM_RETRY_MAX_MS, 1000 * 2 ** this.streamRetries++)
+    this.streamTimer = window.setTimeout(() => void this.openStream(), delay)
+  }
+
+  // Replay what arrived while the stream was down. Only the other side's messages: the visitor's
+  // own come back through POST /messages, and a send still in flight has no server id to
+  // de-duplicate against yet. pushMessage ignores ids it already has.
+  private async catchUp(): Promise<void> {
+    try {
+      const res = await fetch(this.url('/messages'), { headers: { [SESSION_HEADER]: this.sessionToken } })
+      if (!res.ok) return
+      const { messages } = (await res.json()) as { messages?: WireMessage[] }
+      for (const w of messages ?? []) if (w.author !== 'visitor') this.ev.onMessage(mapWire(w))
+    } catch {
+      /* the next reconnect tries again */
     }
   }
 
@@ -306,6 +377,9 @@ export class SseTransport implements Transport {
   stop(): void {
     this.es?.close()
     this.es = null
+    window.clearTimeout(this.streamTimer)
+    this.streamTimer = undefined
+    this.streamRetries = 0
     this.opening = null
     // A reset() on logout stops and restarts this transport. Clearing the token means a message
     // sent in that gap is rejected, instead of landing in the previous user's conversation.

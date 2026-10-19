@@ -384,7 +384,7 @@ page loaded. It waits for the visitor to do something:
 | Visitor | When `/session` is called |
 |---|---|
 | First-timer | On their **first message** — nothing before it |
-| Returning visitor who already has a conversation | On load — this resumes it rather than creating one |
+| Returning visitor who already has a conversation | On load, with `resume: true` — re-binds to it and **never creates one** |
 
 Loading the page, opening the widget, reading the greeting and even submitting the pre-chat
 form all leave **nothing** on the server. Only a message does, so a widget that is opened and
@@ -398,9 +398,16 @@ shell.
 
 The returning-visitor exception is deliberate: defer that one too and an agent's follow-up
 would never raise an unread badge, because the SSE stream would not be connected while the
-panel is shut. Resuming costs nothing, since the conversation already exists. `conversationId`
-in the stored session is the marker — it is only written once the server has actually returned
-one.
+panel is shut. `conversationId` in the stored session is the marker — it is only written once
+the server has actually returned one.
+
+The marker can outlive its conversation: an agent (or auto-resolve) may resolve the thread while
+no page is listening, so the widget never hears `conversation.resolved` and never clears it.
+That is why the resume carries `resume: true`. The API then only re-binds to an **open**
+conversation and creates nothing — no contact, no conversation — and answers **204** when there
+is none. The widget forgets the `conversationId` and goes back to the first-timer path: the
+pre-chat form if one is configured, then the first message. Before this flag, that reload minted
+a fresh, empty conversation on every visit after a resolution.
 
 **Trade-off worth knowing:** a visitor who fills in the pre-chat form and then leaves without
 typing is not captured at all. If those leads matter more than empty conversations, make
@@ -465,6 +472,13 @@ CSAT attribution and queue ordering.
 
 ### The contract the widget implements
 
+**The stream has to be re-ticketed, not just reconnected.** A ticket is valid for 60 seconds and
+the server ends every stream after 15 minutes. EventSource's own retry reuses the old URL, gets
+a 401, and treats that as final — the widget would silently stop receiving agent replies and
+resolution notices for the rest of the page. So `onerror` closes the EventSource and re-mints a
+ticket with backoff (1s → 30s), and after a reconnect the widget replays `GET /messages` to pick
+up anything sent while it was down (duplicates are dropped by id).
+
 **`conversation.resolved` is a NAMED SSE frame.** The stream writes
 `id: …\nevent: {name}\ndata: {json}`, so `EventSource.onmessage` only ever sees
 `event: message`. Resolution needs `addEventListener('conversation.resolved', …)` or the
@@ -514,10 +528,10 @@ Conventions this widget relies on. Breaking one usually shows up as a subtle pro
 problem rather than a test failure.
 
 **Create the conversation lazily, on the first message.** *No longer blocking.*
-`POST /session` calls `ConversationResolutionService.ResolveAsync` unconditionally, so any call
-to it creates a `Conversation` row and fires `ConversationCreated`. The widget now calls it only
-when the visitor sends their first message (see **Conversation lifecycle**), so in practice no
-empty conversation is ever created.
+Without `resume`, `POST /session` calls `ConversationResolutionService.ResolveAsync`
+unconditionally, so it creates a `Conversation` row (and fires `ConversationCreated`) whenever
+none is open. The widget sends that form only with the visitor's first message; the page-load
+resume sends `resume: true`, which never creates (see **Conversation lifecycle**).
 
 Chatwoot enforces this server-side instead, as a `before_action` on `POST /messages` only
 (`Api::V1::Widget::MessagesController#set_conversation`). That is still the more robust home for

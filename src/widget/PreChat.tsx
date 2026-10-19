@@ -38,8 +38,8 @@ const VALIDATORS: Record<PreChatField, (raw: string) => FieldResult> = {
 }
 
 // Shown in place of the thread while appearance-configured pre-chat fields are unanswered.
-// Submitting is what opens the session (POST /session with `contact`), so no conversation
-// reaches the agent console until the visitor has actually identified themselves.
+// Submitting arms the session with the answers; the visitor's first message opens it (POST
+// /session with `contact`), so no conversation reaches the agent console before then.
 export function PreChat({ config }: { config: WidgetConfig }) {
   // Verified details replace their fields; unverified ones only fill them in, so the form still
   // shows every configured field. Both read signals, so a TalkyHub.setUser() landing while the

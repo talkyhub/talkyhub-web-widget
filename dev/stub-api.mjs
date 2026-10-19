@@ -127,6 +127,10 @@ http.createServer(async (req, res) => {
         identity = 'unverified' // identifier ignored entirely, resolved by source_id
       }
     }
+    // A resume (page load onto a remembered conversation) re-binds to an OPEN one and creates
+    // nothing: with none open it answers 204, like the API.
+    const open = S.convs.get(key)
+    if (b.resume && (!open || open.resolved)) { res.writeHead(204, CORS); return res.end() }
     const c = resolveConv(key)
     return json(res, { session_token: issue(c), conversation_id: c.id, messages: c.messages, identity })
   }
@@ -150,6 +154,13 @@ http.createServer(async (req, res) => {
     S.streams.get(id).add(res)
     req.on('close', () => S.streams.get(id)?.delete(res))
     return
+  }
+
+  // History, used by the widget to catch up after its stream reconnects.
+  if (p.endsWith('/messages') && req.method === 'GET') {
+    const c = S.byToken.get(req.headers['x-talkyhub-session'])
+    if (!c) return json(res, {}, 401)
+    return json(res, { messages: c.messages, has_more: false })
   }
 
   if (p.endsWith('/messages')) {

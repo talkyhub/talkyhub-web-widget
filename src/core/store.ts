@@ -10,7 +10,7 @@ export const messages = signal<Message[]>([])
 export const agentTyping = signal(false)
 export const unread = signal(0)
 // True while the pre-chat form is standing between the visitor and the thread. Set by
-// Widget on mount; cleared by submitPreChat(), which is what actually opens the session.
+// Widget on mount; cleared by submitPreChat(), which arms the session for the first message.
 export const preChatPending = signal(false)
 
 let transport: Transport | null = null

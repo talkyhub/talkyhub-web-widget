@@ -73,6 +73,8 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     // re-identified, even if last visit's user was the same person.
     let appliedKey: string | null = null
     let started = false
+    // Bumped by resetAll() and unmount, so a resume answering after either is ignored.
+    let epoch = 0
 
     const warnRejected = (u: NormalizedUser) => {
       if (u.rejected.length) {
@@ -103,8 +105,16 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       // is what keeps the unread badge live while the panel is shut. Everyone else is only
       // armed: their first message is what opens the session, so a widget that is loaded,
       // opened and abandoned leaves no empty conversation behind.
-      if (loadSession(config.token).conversationId) void t.start(session)
-      else t.arm(session)
+      if (!loadSession(config.token).conversationId) return t.arm(session)
+      const at = epoch
+      void t.start(session).then((resumed) => {
+        // The remembered conversation was resolved while no page was listening. The transport has
+        // already forgotten it and created nothing; this visitor is back to having no
+        // conversation, so decide afresh — the pre-chat form, then their first message.
+        if (resumed || at !== epoch) return
+        started = false
+        boot()
+      })
     }
 
     // Opening a session is what creates the conversation, so it never happens just because a page
@@ -132,6 +142,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     // widget onto the previous person's conversation.
     const resetAll = (next: NormalizedUser = normalizeUser(undefined)) => {
       t.stop()
+      epoch++
       resetSession(config.token)
       identity = next
       appliedKey = null
@@ -197,6 +208,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
 
     return () => {
       registerHost(null)
+      epoch++
       t.stop()
       preChatPending.value = false
     }
