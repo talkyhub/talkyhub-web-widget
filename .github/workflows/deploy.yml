@@ -3,10 +3,11 @@ name: Deploy Widget CDN
 # Self-hosted static deploy: build the widget bundle and publish it to the same server as the API/docs, served
 # by host nginx at cdn.talkyhub.ru (deploy/nginx/cdn.talkyhub.ru.conf).
 #
-# Each build emits THREE files into dist/widget/v1/:
+# Each build emits FOUR files into dist/widget/v1/:
 #   loader.js            the stable embed URL, overwritten every release, short-cached
 #   loader.<hash>.js     an immutable content-hashed copy of the same bytes
 #   manifest.json        which hash is current, its sha256 and build time
+#   preview.html         the dashboard's live preview (framed by app.talkyhub.ru), loads loader.<hash>.js
 # We rsync ADDITIVELY (no --delete) so every past hashed build stays reachable — that is what
 # makes a rollback a one-line nginx/customer change instead of a rebuild. The major version in
 # the path (/widget/v1/) is reserved for BREAKING changes, not for ordinary releases.
@@ -43,8 +44,11 @@ jobs:
 
       - run: npm ci
 
+      - name: Check the changelog
+        run: npm run changelog:check   # docs/changelog/{ru,en}.md agree + newest = package.json version
+
       - name: Build the widget bundle
-        run: npm run build   # -> dist/widget/v1/{loader.js, loader.<hash>.js, manifest.json}
+        run: npm run build   # -> dist/widget/v1/{loader.js, loader.<hash>.js, manifest.json, preview.html}
 
       - name: Run tests
         run: npm test
@@ -66,3 +70,45 @@ jobs:
 
       - name: Report what went live
         run: cat dist/widget/v1/manifest.json
+
+  # After a successful deploy, publish docs/changelog/{ru,en}.md to talkyhub-docs (production) as the "What's new
+  # in the website widget" page, beside the app's; that push makes docs.talkyhub.ru rebuild. Same job as
+  # talkyhub-web-app's. Never fails the release: without the DOCS_REPO_TOKEN secret (contents:write on
+  # talkyhub-docs) it warns and skips. See docs/changelog/README.md.
+  publish-changelog:
+    needs: deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Push the widget changelog to talkyhub-docs
+        env:
+          DOCS_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOCS_REPO_TOKEN:-}" ]; then
+            echo "::warning::DOCS_REPO_TOKEN is not set — the widget changelog was not published to talkyhub-docs."
+            exit 0
+          fi
+          git clone --depth 1 --branch production \
+            "https://x-access-token:${DOCS_REPO_TOKEN}@github.com/talkyhub/talkyhub-docs.git" docs-repo
+          EN=i18n/en/docusaurus-plugin-content-docs/current/changelog
+          mkdir -p docs-repo/docs/changelog "docs-repo/$EN"
+          cp docs/changelog/ru.md docs-repo/docs/changelog/web-widget.md
+          cp docs/changelog/en.md "docs-repo/$EN/web-widget.md"
+          cd docs-repo
+          if [ -z "$(git status --porcelain)" ]; then echo "Changelog unchanged — nothing to publish."; exit 0; fi
+          git config user.name "ai-iskuzhin"
+          git config user.email "tur3is@yandex.ru"
+          git add docs/changelog/web-widget.md "$EN/web-widget.md"
+          git commit -m "changelog: sync widget changelog from talkyhub-web-widget@${GITHUB_SHA::7}"
+          for attempt in 1 2 3; do
+            git push origin HEAD:production && exit 0
+            echo "Push rejected (attempt $attempt) — rebasing on the latest production and retrying."
+            git pull --rebase origin production
+          done
+          echo "::warning::Could not push the changelog to talkyhub-docs after 3 attempts."
+          exit 1
