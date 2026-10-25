@@ -21,6 +21,16 @@ export interface Session {
 
 const KEY = (token: string) => `talkyhub:session:${token}`
 
+// The dashboard preview must leave nothing behind in the admin's browser, so it swaps
+// localStorage for a map that dies with the page. Everything below goes through these two.
+let memory: Map<string, string> | null = null
+export function useMemoryStorage(): void {
+  memory ??= new Map()
+}
+const read = (key: string) => (memory ? memory.get(key) ?? null : localStorage.getItem(key))
+const write = (key: string, value: string) => (memory ? memory.set(key, value) : localStorage.setItem(key, value))
+const remove = (key: string) => (memory ? memory.delete(key) : localStorage.removeItem(key))
+
 function randomId(): string {
   const buf = new Uint8Array(18)
   ;(globalThis.crypto ?? ({} as Crypto)).getRandomValues?.(buf)
@@ -35,7 +45,7 @@ function randomId(): string {
 // Never throws — private-mode / disabled storage falls back to an in-memory id.
 export function loadSession(token: string): Session {
   try {
-    const raw = localStorage.getItem(KEY(token))
+    const raw = read(KEY(token))
     if (raw) return JSON.parse(raw) as Session
   } catch {
     /* storage unavailable — fall through to a fresh, ephemeral session */
@@ -47,7 +57,7 @@ export function loadSession(token: string): Session {
 
 export function saveSession(token: string, session: Session): void {
   try {
-    localStorage.setItem(KEY(token), JSON.stringify(session))
+    write(KEY(token), JSON.stringify(session))
   } catch {
     /* ignore — the session stays in memory for this page load */
   }
@@ -60,7 +70,7 @@ export function saveSession(token: string, session: Session): void {
  */
 export function resetSession(token: string): Session {
   try {
-    localStorage.removeItem(KEY(token))
+    remove(KEY(token))
   } catch {
     /* storage unavailable — nothing was persisted to remove */
   }

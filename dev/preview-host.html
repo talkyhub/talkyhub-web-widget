@@ -1,0 +1,59 @@
+<!doctype html>
+<!--
+  Stand-in for the dashboard: frames /preview.html and drives it over postMessage, the same way
+  app.talkyhub.ru does. `npm run dev`, then open http://localhost:5173/dev/preview-host.html
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preview host — dev</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; margin: 0; display: flex; gap: 24px; padding: 24px; background: #fff; color: #1f2430; }
+      form { width: 260px; display: grid; gap: 10px; align-content: start; }
+      label { display: grid; gap: 4px; color: #5b6472; }
+      input, select { font: inherit; padding: 4px 6px; }
+      .frames { display: flex; gap: 24px; align-items: flex-start; }
+      iframe { border: 1px solid #e6e8ef; border-radius: 12px; background: #f4f5f8; }
+      #log { font: 12px ui-monospace, monospace; color: #8a8f9c; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <form id="f">
+      <label>accent <input name="accent" type="color" value="#874efe" /></label>
+      <label>launcher <select name="launcher"><option>label</option><option>mascot</option><option>bubble</option></select></label>
+      <label>position <select name="position"><option>bottom-right</option><option>bottom-left</option></select></label>
+      <label>launcher text <input name="launcher_text" value="Чат с поддержкой" /></label>
+      <label>agent name <input name="agent_name" value="VerificaHub - поддержка" /></label>
+      <label>greeting <input name="greeting" value="Привет! Чем помочь?" /></label>
+      <label><span><input name="pre_chat" type="checkbox" /> pre-chat (name, email)</span></label>
+      <div id="log"></div>
+    </form>
+    <!-- Same sandbox as the app's WidgetPreview (talkyhub-web), so this stand-in breaks where it would. -->
+    <div class="frames">
+      <iframe id="desk" src="/preview.html" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" width="560" height="640" title="Desktop preview"></iframe>
+      <iframe id="phone" src="/preview.html" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" width="375" height="667" title="Phone preview"></iframe>
+    </div>
+    <script>
+      const f = document.getElementById('f')
+      const frames = [document.getElementById('desk'), document.getElementById('phone')]
+      // The GET /config body, built from the form — exactly what the app sends.
+      const config = () => ({
+        agent_name: f.agent_name.value,
+        greeting: f.greeting.value || null,
+        reply_time: 'Отвечаем за 5 минут',
+        appearance: { accent: f.accent.value, position: f.position.value, launcher: f.launcher.value, launcher_text: f.launcher_text.value },
+        pre_chat: { enabled: f.pre_chat.checked, fields: ['name', 'email'] },
+        channels: [{ kind: 'telegram', url: 'https://t.me/verificahub', label: 'Telegram' }],
+      })
+      const send = (frame) => frame.contentWindow.postMessage({ type: 'talkyhub:preview:config', config: config() }, location.origin)
+      addEventListener('message', (e) => {
+        if (e.data?.type !== 'talkyhub:preview:ready') return
+        document.getElementById('log').textContent += `ready ${e.data.version}\n`
+        const frame = frames.find((fr) => fr.contentWindow === e.source)
+        if (frame) send(frame)
+      })
+      f.addEventListener('input', () => frames.forEach(send))
+    </script>
+  </body>
+</html>

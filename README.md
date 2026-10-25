@@ -20,6 +20,15 @@ pre-chat fields, and `greeting: null`. Everything is a query param, so a variant
 
     http://localhost:5173/?accent=%23b6e22f&position=bottom-left&launcher=bubble&prechat=name,email
 
+Two more dev pages:
+
+- `/dev/integrations.html?mode=hidden|mobile|inline` covers the hidden launcher, `data-talkyhub-open`,
+  `#talkyhub-open`, the `talkyhub:*` events and inline mode.
+- `/dev/preview-host.html` frames `/preview.html` and drives it over postMessage, the way the
+  dashboard does.
+
+See [docs/widget.md](docs/widget.md#display-and-page-integration).
+
 ### Against a stub API
 
 `MockTransport` can't reach the parts that need a server — identity, the SSE stream, an agent
@@ -50,8 +59,9 @@ npm test           # vitest — the validation rules are specified by their test
 npm run build      # → dist/widget/v1/  (self-contained IIFE: Preact + CSS inlined)
 ```
 
-The build emits three files: `loader.js` (the stable embed URL, short-cached),
-`loader.<hash>.js` (immutable, for pinning or rollback) and `manifest.json`. See
+The build emits four files: `loader.js` (the stable embed URL, short-cached),
+`loader.<hash>.js` (immutable, for pinning or rollback), `manifest.json`, and `preview.html`
+(the dashboard's live preview, loading the hashed bundle). See
 [docs/widget.md](docs/widget.md#releases-and-cdn-caching).
 
 The customer install snippet is one async script:
@@ -125,6 +135,9 @@ Self-hosted static bundle, served by host nginx at **cdn.talkyhub.ru** (same ser
   `dist/widget/v1/loader.js`, then rsync `dist/` to the server over SSH (additive — older
   `/widget/vN/` stay live). Uses the **production** environment: secret `SSH_KEY` + vars
   `SSH_HOST`/`SSH_USER`/`SSH_PORT`/`CDN_DEPLOY_PATH` (same values as the api/docs repos).
+  `npm run changelog:check` gates it; after it, `publish-changelog` copies
+  [docs/changelog/](docs/changelog/README.md) to talkyhub-docs (repo secret `DOCS_REPO_TOKEN`).
+  **Every version bump needs a changelog entry.**
 - `deploy/nginx/cdn.talkyhub.ru.conf` — host nginx vhost (exact `server_name`, `*.talkyhub.ru`
   wildcard cert, immutable cache on hashed builds only — `loader.js` itself revalidates).
   Install to `sites-available` + symlink + reload.
@@ -146,9 +159,9 @@ Embed on a customer site (token from `POST /api/v1/workspaces/{ws}/channels/webc
    this same core, for apps that would rather mount a component than inject a script tag. It is a
    separate artifact from the CDN bundle and, more importantly, a different versioning contract:
    script-tag integrators never choose a version and auto-update within minutes, but package
-   consumers **pin** one. That is what would force real semver, a changelog and tagged GitHub
-   releases — none of which the CDN bundle needs today, where content hashes and an additive
-   rsync already cover identity and rollback (see
+   consumers **pin** one. That is what would force strict semver and tagged GitHub releases.
+   The CDN bundle needs neither today: content hashes and an additive rsync already cover
+   identity and rollback, and [the changelog](docs/changelog/README.md) covers what changed (see
    [docs/widget.md](docs/widget.md#releases-and-cdn-caching)).
 
    Worth settling before starting: whether the package ships its own copy of the widget or just

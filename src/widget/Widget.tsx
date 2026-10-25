@@ -21,7 +21,7 @@ import { isUserSwitch, normalizeUser, remainingFields, userKey } from '../core/i
 import type { HostUser, NormalizedUser } from '../core/identity'
 import { themeVars } from '../core/theme'
 import { Panel } from './Panel'
-import { Launcher, launcherShape } from './Launcher'
+import { Launcher, launcherHidden, launcherShape } from './Launcher'
 import { Channels } from './Channels'
 import { useCompact } from './useCompact'
 
@@ -214,14 +214,19 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
     }
   }, [])
 
-  const { accent, onAccent, position, launcher, modal } = config.appearance
+  const { accent, onAccent, position, launcher } = config.appearance
+  const inline = config.display.mode === 'inline'
+  // Inline is part of the page: dimming it or trapping focus in it would make no sense.
+  const modal = config.appearance.modal && !inline
   const open = isOpen.value
+  const noLauncher = launcherHidden(config.display, compact)
   // The panel and the floating channel row both clear the launcher, whose height differs per
-  // shape — and the shape isn't just the configured value (see launcherShape).
-  const shape = launcherShape(launcher, open)
+  // shape — and the shape isn't just the configured value (see launcherShape). With no launcher
+  // the panel drops into the corner it would have sat above.
+  const shape = noLauncher ? 'none' : launcherShape(launcher, open)
   // In modal mode a floating row would sit on the scrim, so the channels move inside the panel
-  // — the same place they go on a phone.
-  const channelsInPanel = compact || modal
+  // — the same place they go on a phone, and with no launcher there is nothing to float beside.
+  const channelsInPanel = compact || modal || noLauncher
 
   // Dimming the page makes this a real dialog, so it has to behave like one: Escape closes it,
   // Tab stays inside it, the page underneath stops scrolling, and focus goes back where it came
@@ -277,7 +282,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
   return (
     <div
       ref={rootRef}
-      class={`tk ${position === 'bottom-left' ? 'is-left' : ''} ${modal ? 'is-modal' : ''} launcher-${shape}`}
+      class={`tk ${position === 'bottom-left' ? 'is-left' : ''} ${modal ? 'is-modal' : ''} ${inline ? 'is-inline' : ''} launcher-${shape}`}
       // Every accent-derived colour lands here as a custom property, so the gradient, the
       // shadows, the tinted surfaces and the mascot's own SVG stops all follow the site's
       // brand without a second source of truth.
@@ -292,7 +297,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       {!channelsInPanel && open && (
         <Channels channels={config.channels} variant="float" originRight={position !== 'bottom-left'} />
       )}
-      <Launcher config={config} />
+      {!noLauncher && <Launcher config={config} />}
     </div>
   )
 }

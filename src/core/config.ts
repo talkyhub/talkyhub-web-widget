@@ -17,12 +17,13 @@ export const DEFAULT_CONFIG: WidgetConfig = {
   },
   preChat: { enabled: false, fields: ['name', 'email'] },
   channels: [],
+  display: { mode: 'floating', hideLauncher: 'never' },
 }
 
 // Shape returned by GET /api/v1/widget/{token}/config. The API serializes snake_case
 // (JsonNamingPolicy.SnakeCaseLower); position/launcher/fields are the exact strings the
 // widget uses ("bottom-right", "mascot", "name"|"email"|"phone").
-interface RemoteConfig {
+export interface RemoteConfig {
   agent_name?: string
   greeting?: string | null
   reply_time?: string | null
@@ -196,31 +197,40 @@ export async function loadConfig(token?: string, apiBase = ''): Promise<WidgetCo
   try {
     const res = await fetch(`${apiBase}/api/v1/widget/${encodeURIComponent(token)}/config`)
     if (!res.ok) return base
-    const r = (await res.json()) as RemoteConfig
-    const accent = r.appearance?.accent
-    const onAccent = r.appearance?.on_accent
-    return {
-      ...base,
-      agentName: optional(r.agent_name, base.agentName) ?? base.agentName,
-      greeting: optional(r.greeting, base.greeting),
-      replyTime: optional(r.reply_time, base.replyTime),
-      appearance: {
-        accent: accent && parseHex(accent) ? accent : base.appearance.accent,
-        onAccent: onAccent && parseHex(onAccent) ? onAccent : base.appearance.onAccent,
-        position: oneOf(r.appearance?.position, POSITIONS, base.appearance.position),
-        launcher: oneOf(r.appearance?.launcher, LAUNCHERS, base.appearance.launcher),
-        launcherText:
-          optional(r.appearance?.launcher_text, base.appearance.launcherText) ??
-          base.appearance.launcherText,
-        modal: typeof r.appearance?.modal === 'boolean' ? r.appearance.modal : base.appearance.modal,
-      },
-      preChat: {
-        enabled: r.pre_chat?.enabled ?? base.preChat.enabled,
-        fields: preChatFields(r.pre_chat?.fields, base.preChat.fields),
-      },
-      channels: channels(r.channels, base.channels),
-    }
+    return parseRemoteConfig(base, (await res.json()) as RemoteConfig)
   } catch {
     return base
+  }
+}
+
+/**
+ * Lay a /config-shaped object over `base`. Shared by loadConfig and the dashboard preview, which
+ * receives the same shape over postMessage: whatever an admin is typing goes through exactly the
+ * validation the live widget applies, so the preview cannot show something the site won't.
+ */
+export function parseRemoteConfig(base: WidgetConfig, remote: unknown): WidgetConfig {
+  const r = (remote && typeof remote === 'object' ? remote : {}) as RemoteConfig
+  const accent = r.appearance?.accent
+  const onAccent = r.appearance?.on_accent
+  return {
+    ...base,
+    agentName: optional(r.agent_name, base.agentName) ?? base.agentName,
+    greeting: optional(r.greeting, base.greeting),
+    replyTime: optional(r.reply_time, base.replyTime),
+    appearance: {
+      accent: accent && parseHex(accent) ? accent : base.appearance.accent,
+      onAccent: onAccent && parseHex(onAccent) ? onAccent : base.appearance.onAccent,
+      position: oneOf(r.appearance?.position, POSITIONS, base.appearance.position),
+      launcher: oneOf(r.appearance?.launcher, LAUNCHERS, base.appearance.launcher),
+      launcherText:
+        optional(r.appearance?.launcher_text, base.appearance.launcherText) ??
+        base.appearance.launcherText,
+      modal: typeof r.appearance?.modal === 'boolean' ? r.appearance.modal : base.appearance.modal,
+    },
+    preChat: {
+      enabled: r.pre_chat?.enabled ?? base.preChat.enabled,
+      fields: preChatFields(r.pre_chat?.fields, base.preChat.fields),
+    },
+    channels: channels(r.channels, base.channels),
   }
 }

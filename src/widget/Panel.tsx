@@ -11,10 +11,12 @@ import { Credit } from './Credit'
 // inside the panel, on a desktop it floats beside the launcher, and Widget owns that choice.
 export function Panel({ config, channels }: { config: WidgetConfig; channels: Channel[] }) {
   const gated = preChatPending.value
+  // Inline it is a region of the host page, not a dialog laid over it.
+  const inline = config.display.mode === 'inline'
   return (
     <div
       class={`tk-panel ${isOpen.value ? 'is-open' : ''}`}
-      role="dialog"
+      role={inline ? 'region' : 'dialog'}
       aria-label={`Chat with ${config.agentName}`}
       aria-hidden={!isOpen.value}
     >

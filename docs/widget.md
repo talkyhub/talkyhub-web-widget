@@ -28,6 +28,8 @@ Three layers decide what a visitor sees, later layers winning over earlier ones:
 | `data-api` | yes in production | API origin. Without it the widget runs on defaults with `MockTransport` — handy for a static preview, useless for real chat. |
 | `data-accent` | no | Appearance override, see below. |
 | `data-position` | no | Appearance override. |
+| `data-hide-launcher` | no | `true` or `mobile` — see [Display and page integration](#display-and-page-integration). |
+| `data-container` | no | CSS selector to render the chat inline — same section. |
 | `data-launcher` | no | Appearance override. |
 
 The equivalent object form, which takes precedence if present:
@@ -50,6 +52,99 @@ server-owned. `window.chatwootSettings` draws the same line.
 `talkyhubSettings.user` identifies a signed-in user — prefill for the pre-chat form, and with
 an HMAC, verified identity that follows the user across devices. It has its own reference:
 [identity.md](identity.md).
+
+---
+
+## Display and page integration
+
+How the widget sits on the page is the **integrator's** call, not the dashboard's: only the page
+knows its own layout. So these live in `talkyhubSettings` / `data-*` and never come from the API.
+
+### Hide the launcher
+
+```html
+<script>window.talkyhubSettings = { token: 'wgt_…', apiBase: 'https://api.talkyhub.ru', hideLauncher: 'mobile' }</script>
+```
+
+| `hideLauncher` | Effect |
+|---|---|
+| `false` (default) | The launcher shows everywhere. |
+| `'mobile'` | No launcher at the phone breakpoint (≤ 480px). That is where the panel goes full-screen anyway, and a bubble over a phone page mostly covers content. |
+| `true` | No launcher anywhere. |
+
+With no launcher, the page opens the chat itself. The panel then takes the launcher's corner,
+its header button becomes a close, and channel links move inside the panel.
+
+### Open it from the page
+
+```html
+<button data-talkyhub-open>Chat with us</button>   <!-- no JS needed -->
+<a href="#talkyhub-open">Ask a question</a>         <!-- also works from another page, an email, a QR code -->
+```
+
+```js
+TalkyHub.open()      // and .close(), .toggle()
+addEventListener('talkyhub:unread', (e) => badge.textContent = e.detail.count || '')
+addEventListener('talkyhub:open', …)   // and 'talkyhub:close'; 'talkyhub:ready' once mounted
+```
+
+Any element with `data-talkyhub-open`, anywhere on the page, opens the chat on click, even one
+added later (the listener is delegated) and even before the widget has mounted (the open is
+remembered). An `<a href="/support" data-talkyhub-open>` still works as a link without JS.
+
+`talkyhub:unread` carries the count of agent messages that arrived while the panel was closed,
+and fires again with `0` when it opens. It is what a page with a hidden launcher uses to badge
+its own button.
+
+### Inline: the chat as part of the page
+
+For a dedicated `/support` page, a help-centre sidebar, or the web view of a mobile app:
+
+```html
+<div id="support-chat" style="height: 100dvh"></div>
+<script>
+  window.talkyhubSettings = { token: 'wgt_…', apiBase: 'https://api.talkyhub.ru', container: '#support-chat' }
+</script>
+<script async src="https://cdn.talkyhub.ru/widget/v1/loader.js"></script>
+```
+
+The conversation fills the container. It is always open, with no launcher and no close button,
+and `modal` is ignored. **The container sets the size**, so give it a height. The panel's frame
+can be tuned from the page, because custom properties cross the shadow boundary:
+`#support-chat { --talkyhub-radius: 0; --talkyhub-border: none }` for edge-to-edge.
+`container` also takes an element instead of a selector. If the selector matches nothing, the
+widget warns and falls back to floating rather than showing no chat at all.
+
+Because it runs on the integrator's own origin, inline mode is the **same visitor** as the floating
+widget on the rest of the site: same `sourceId`, same conversation, same `setUser` identity,
+same `AllowedOrigins`. A link to a hosted page on our domain gets none of that. That's why this
+is the full-page option, rather than a `cdn.talkyhub.ru/chat?token=…` page.
+
+---
+
+## Dashboard preview
+
+`cdn.talkyhub.ru/widget/v1/preview.html` is the live preview in the dashboard (inbox settings,
+and the screen after creating a web inbox). It is the real bundle with `talkyhubSettings.preview`:
+
+- it runs `MockTransport` and an in-memory session, so it makes no network calls and stores nothing;
+- it opens on the first config, then leaves open/closed to the admin;
+- it takes its settings from the parent window.
+
+```text
+preview → app   { type: 'talkyhub:preview:ready', version }          once it is listening
+app → preview   { type: 'talkyhub:preview:config', config, open? }   on ready, then on every edit
+```
+
+`config` is the **`GET /config` body**, so whatever the admin types goes through the same parsing
+and validation as on a live site, and the preview can't show something the site won't.
+Appearance edits re-render in place. A greeting or pre-chat change remounts the widget, since
+both are decided once when it mounts. That is what a reload does on a real site.
+
+Only `https://app.talkyhub.ru` and `localhost` may drive it. The page checks `event.origin`, and
+nginx sends the same list as `frame-ancestors`. The build points the page at the content-hashed
+bundle, so the page and its script can't drift apart within one cache window.
+`dev/preview-host.html` is a stand-in for the dashboard, with the app's exact iframe sandbox.
 
 ---
 
@@ -614,8 +709,13 @@ when neither exists. The content hash still identifies the *bytes*; this identif
 There are deliberately **no git tags or GitHub Releases**. Rollback is already covered by the
 hashed builds plus the additive rsync, the CDN keeps every past build, and integrators never
 choose a version — so release ceremony would add process without answering a question anyone
-is asking. That changes when the React/Vue SDK lands: package consumers pin versions, which
-forces real semver and a changelog. See the roadmap in the README.
+is asking. That changes when the React/Vue SDK lands: package consumers pin versions. See the
+roadmap in the README.
+
+What integrators do need is to know **what changed**, since every release reaches their site
+unasked. So each version has an entry in [`docs/changelog/`](changelog/README.md) (ru + en). CI
+checks it against `package.json` before every deploy, and after a deploy publishes it to
+docs.talkyhub.ru as "What's new in the website widget", next to the app's page.
 
 ### The bug this replaced
 

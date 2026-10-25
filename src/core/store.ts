@@ -69,11 +69,20 @@ export function callHost(call: HostCall): void {
   else queued.push(call)
 }
 
+// Inline mode has nothing to close into: the conversation IS the page. Pinning makes every close
+// path — the header, Escape, a reset, TalkyHub.close() — a no-op instead of each checking.
+let pinned = false
+export function pinOpen(): void {
+  pinned = true
+  openWidget()
+}
+
 export function openWidget(): void {
   isOpen.value = true
   unread.value = 0
 }
 export function closeWidget(): void {
+  if (pinned) return
   isOpen.value = false
 }
 export function toggleWidget(): void {

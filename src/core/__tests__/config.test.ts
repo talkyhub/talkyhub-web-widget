@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadConfig } from '../config'
+import { DEFAULT_CONFIG, loadConfig, parseRemoteConfig } from '../config'
 
 // The config response is public, unauthenticated JSON that ends up driving colours, links and
 // form fields on a customer's page. These cases pin the rule that it is validated, not
@@ -175,5 +175,26 @@ describe('failure', () => {
     const c = await load()
     expect(c.agentName).toBe('TalkyHub Support')
     expect(c.channels).toEqual([])
+  })
+})
+
+// The dashboard preview feeds parseRemoteConfig whatever arrives by postMessage: the same rules as
+// the API response, and no assumption that it is even an object.
+describe('parseRemoteConfig (preview input)', () => {
+  it('keeps the base for a non-object', () => {
+    expect(parseRemoteConfig(DEFAULT_CONFIG, null)).toEqual(DEFAULT_CONFIG)
+    expect(parseRemoteConfig(DEFAULT_CONFIG, 'nope')).toEqual(DEFAULT_CONFIG)
+  })
+
+  it('validates like the live widget and never touches display', () => {
+    const c = parseRemoteConfig(DEFAULT_CONFIG, {
+      appearance: { accent: 'red', launcher: 'rocket' },
+      channels: [{ kind: 'telegram', url: 'javascript:alert(1)' }, { url: 't.me/x' }, { url: 'https://t.me/x' }],
+      display: { mode: 'inline' },
+    })
+    expect(c.appearance.accent).toBe(DEFAULT_CONFIG.appearance.accent)
+    expect(c.appearance.launcher).toBe(DEFAULT_CONFIG.appearance.launcher)
+    expect(c.channels.map((ch) => ch.url)).toEqual(['https://t.me/x'])
+    expect(c.display).toEqual(DEFAULT_CONFIG.display)
   })
 })

@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  The dashboard's live preview, published at cdn.talkyhub.ru/widget/v1/preview.html and framed
+  by app.talkyhub.ru. It runs the real widget on the fake chat, stores nothing, and takes its
+  settings from the app by postMessage (src/loader.ts → bootPreview). The page behind it is a
+  wordless sketch of a website, so the widget is judged where it will actually sit.
+
+  Built by vite.config.ts, which swaps the dev entry below for the content-hashed bundle.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>TalkyHub widget preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; }
+      body { background: #f4f5f8; overflow: hidden; }
+      .site { max-width: 760px; margin: 0 auto; padding: 22px 24px; }
+      .bar { height: 10px; border-radius: 5px; background: #e3e5ec; }
+      .nav { display: flex; align-items: center; gap: 14px; margin-bottom: 44px; }
+      .logo { width: 30px; height: 30px; border-radius: 8px; background: #dcdfe7; }
+      .nav .bar { width: 52px; }
+      .nav .bar:first-of-type { margin-left: auto; }
+      .hero .bar { height: 18px; border-radius: 9px; margin-bottom: 12px; background: #dcdfe7; }
+      .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
+      .card { height: 120px; border-radius: 14px; background: #fff; border: 1px solid #e8eaf0; }
+      p .bar { margin-bottom: 10px; }
+      @media (max-width: 480px) { .cards { grid-template-columns: 1fr 1fr; } .card:last-child { display: none; } }
+    </style>
+    <script>
+      window.talkyhubSettings = { preview: true };
+    </script>
+  </head>
+  <body>
+    <div class="site" aria-hidden="true">
+      <div class="nav"><span class="logo"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span></div>
+      <div class="hero">
+        <div class="bar" style="width: 62%"></div>
+        <div class="bar" style="width: 44%"></div>
+      </div>
+      <p><span class="bar" style="display: block; width: 80%"></span><span class="bar" style="display: block; width: 70%"></span></p>
+      <div class="cards"><span class="card"></span><span class="card"></span><span class="card"></span></div>
+    </div>
+    <script type="module" src="/src/loader.ts"></script>
+  </body>
+</html>

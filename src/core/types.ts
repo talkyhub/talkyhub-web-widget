@@ -88,6 +88,19 @@ export interface WidgetConfig {
   preChat: { enabled: boolean; fields: PreChatField[] }
   /** Rendered as round links beside the launcher. Empty means the feature is off. */
   channels: Channel[]
+  /**
+   * How this page embeds the widget. Never from the API: it is the integrator's call, made in
+   * talkyhubSettings or data-* attributes, because only the page knows its own layout.
+   */
+  display: {
+    // 'floating' is the launcher + panel in a corner. 'inline' renders the conversation inside an
+    // element of the page — a /support page, a full-screen chat in a mobile app's web view —
+    // always open, with no launcher and nothing to close.
+    mode: 'floating' | 'inline'
+    // 'mobile' hides it at the phone breakpoint, where the panel is full-screen anyway, so the
+    // page can offer chat from its own menu instead of a bubble over its content.
+    hideLauncher: 'never' | 'mobile' | 'always'
+  }
 }
 
 /** Short random id for optimistic client-side messages. */

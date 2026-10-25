@@ -22,6 +22,16 @@ export function launcherShape(
   return launcher === 'mascot' ? 'mascot' : 'bubble'
 }
 
+/**
+ * Whether the launcher is off the page. Inline has no launcher at all; `hideLauncher` lets the
+ * integrator drop it everywhere, or only on phones, and open the chat from their own UI
+ * (TalkyHub.open(), or any element with data-talkyhub-open).
+ */
+export function launcherHidden(display: WidgetConfig['display'], compact: boolean): boolean {
+  if (display.mode === 'inline' || display.hideLauncher === 'always') return true
+  return display.hideLauncher === 'mobile' && compact
+}
+
 // Three shapes, chosen by appearance.launcher:
 //  - "mascot" — the whole mascot, no circle; a padded button gives it a >=48px hit area and CSS
 //    adds the drop-shadow / hover so it reads as an interactive control.

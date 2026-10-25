@@ -45,6 +45,15 @@ function emitVersionedCopy(): Plugin {
       const code = readFileSync(source)
       const hash = createHash('sha256').update(code).digest('hex').slice(0, 12)
       writeFileSync(join(OUT_DIR, `loader.${hash}.js`), code)
+      // The dashboard preview (preview.html) points at the HASHED copy, not loader.js: the page
+      // and the bundle it loads then can't drift apart within one short-cache window.
+      const preview = readFileSync('preview.html', 'utf8')
+      const devEntry = '<script type="module" src="/src/loader.ts"></script>'
+      if (!preview.includes(devEntry)) throw new Error('preview.html: dev entry script not found')
+      writeFileSync(
+        join(OUT_DIR, 'preview.html'),
+        preview.replace(devEntry, `<script src="loader.${hash}.js"></script>`),
+      )
       writeFileSync(
         join(OUT_DIR, 'manifest.json'),
         JSON.stringify(
@@ -61,7 +70,7 @@ function emitVersionedCopy(): Plugin {
         ) + '\n',
       )
       // eslint-disable-next-line no-console
-      console.log(`  versioned copy  ${OUT_DIR}/loader.${hash}.js`)
+      console.log(`  versioned copy  ${OUT_DIR}/loader.${hash}.js (+ preview.html)`)
     },
   }
 }

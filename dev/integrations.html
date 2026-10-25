@@ -1,0 +1,63 @@
+<!doctype html>
+<!--
+  The integrator-facing display options, on the mock transport. `npm run dev`, then:
+    /dev/integrations.html?mode=hidden   no launcher; the page's own button opens the chat
+    /dev/integrations.html?mode=mobile   launcher only on desktop (narrow the window to see it go)
+    /dev/integrations.html?mode=inline   the conversation as the page: a full-height support page
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Integrations — dev</title>
+    <style>
+      body { font: 15px system-ui, sans-serif; margin: 0; color: #1f2430; background: #f7f7fb; }
+      header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; background: #fff; border-bottom: 1px solid #e6e8ef; }
+      header b { margin-right: auto; }
+      .chat-btn { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid #d5d8e2; background: #fff; cursor: pointer; position: relative; }
+      .chat-btn [data-count] { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: #e2445c; color: #fff; font-size: 11px; display: grid; place-items: center; }
+      .chat-btn [data-count="0"] { display: none; }
+      main { max-width: 680px; margin: 0 auto; padding: 32px 24px; }
+      /* inline: the page gives the chat its whole viewport below the header */
+      body.inline main { max-width: none; padding: 0; height: calc(100dvh - 57px); }
+      body.inline #chat { height: 100%; --talkyhub-radius: 0; --talkyhub-border: none; }
+      code { color: #4a2fc4; }
+      #log { font: 12px ui-monospace, monospace; color: #8a8f9c; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Acme</b>
+      <a href="#talkyhub-open">#talkyhub-open link</a>
+      <button class="chat-btn" type="button" data-talkyhub-open>Support <span data-count="0">0</span></button>
+    </header>
+    <main>
+      <div id="chat"></div>
+      <div id="intro">
+        <p>Mode: <code id="mode"></code>. The header button has <code>data-talkyhub-open</code>; its badge listens to <code>talkyhub:unread</code>.</p>
+        <div id="log"></div>
+      </div>
+    </main>
+    <script>
+      const mode = new URLSearchParams(location.search).get('mode') || 'hidden'
+      document.getElementById('mode').textContent = mode
+      const settings = { token: 'demo' }
+      if (mode === 'hidden') settings.hideLauncher = true
+      if (mode === 'mobile') settings.hideLauncher = 'mobile'
+      if (mode === 'inline') {
+        settings.container = '#chat'
+        document.body.classList.add('inline')
+        document.getElementById('intro').remove()
+      }
+      window.talkyhubSettings = settings
+      const log = (t) => { const el = document.getElementById('log'); if (el) el.textContent += t + '\n' }
+      for (const ev of ['talkyhub:ready', 'talkyhub:open', 'talkyhub:close']) addEventListener(ev, () => log(ev))
+      addEventListener('talkyhub:unread', (e) => {
+        log(`talkyhub:unread ${e.detail.count}`)
+        document.querySelector('[data-count]').dataset.count = e.detail.count
+        document.querySelector('[data-count]').textContent = e.detail.count
+      })
+    </script>
+    <script type="module" src="/src/loader.ts"></script>
+  </body>
+</html>
