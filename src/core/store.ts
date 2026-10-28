@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals'
-import type { Contact, Message } from './types'
+import type { Attributes, Contact, Message } from './types'
 import { rid } from './types'
 import type { Transport } from './transport'
 import type { HostUser } from './identity'
@@ -20,14 +20,14 @@ export function attachTransport(t: Transport): void {
 
 // Widget registers how a session gets opened, so the pre-chat form can hand its answers
 // straight to POST /session without the Panel having to drill a callback down to it.
-let sessionStarter: ((contact?: Contact) => void) | null = null
-export function onStartSession(fn: (contact?: Contact) => void): void {
+let sessionStarter: ((contact?: Contact, attributes?: Attributes) => void) | null = null
+export function onStartSession(fn: (contact?: Contact, attributes?: Attributes) => void): void {
   sessionStarter = fn
 }
 
-export function submitPreChat(contact: Contact): void {
+export function submitPreChat(contact: Contact, attributes?: Attributes): void {
   preChatPending.value = false
-  sessionStarter?.(contact)
+  sessionStarter?.(contact, attributes)
 }
 
 // Details the host app already knows about its signed-in user (TalkyHub.setUser).

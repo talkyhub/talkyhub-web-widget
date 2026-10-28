@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks'
-import type { Contact, Message, WidgetConfig } from '../core/types'
+import type { Attributes, Contact, Message, WidgetConfig } from '../core/types'
 import { createTransport } from '../core/transport'
 import {
   isOpen,
@@ -85,7 +85,12 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       }
     }
 
-    const begin = (contact?: Contact) => {
+    // Whether the form still has anything to ask. The host can supply name/email/phone, never the
+    // workspace's custom fields, so those keep the form up even for a verified user.
+    const formLeft = (known: Contact) =>
+      remainingFields(config.preChat.fields, known).length > 0 || config.preChat.customFields.length > 0
+
+    const begin = (contact?: Contact, attributes?: Attributes) => {
       if (started) return // idempotent: boot() and the open-watcher below can both call it
       started = true
       appliedKey = userKey(identity)
@@ -98,6 +103,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
         : { ...identity.contact, ...contact }
       const session = {
         contact: contact_,
+        attributes,
         identifier: identity.identifier,
         identifierHash: identity.identifierHash,
       }
@@ -129,7 +135,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       // Once per conversation, not once per browser: with no conversation there is nothing to
       // resume, so ask again — and let them answer differently this time.
       const known = prefillSkips.value ? identity.contact : {}
-      if (config.preChat.enabled && !s.conversationId && remainingFields(config.preChat.fields, known).length) {
+      if (config.preChat.enabled && !s.conversationId && formLeft(known)) {
         preChatPending.value = true
         return
       }
@@ -171,7 +177,7 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
         if (
           preChatPending.value &&
           next.identifierHash &&
-          !remainingFields(config.preChat.fields, next.contact).length
+          !formLeft(next.contact)
         ) {
           submitPreChat({})
         }
@@ -193,12 +199,12 @@ export function Widget({ config, user }: { config: WidgetConfig; user?: HostUser
       saveSession(config.token, { ...loadSession(config.token), identifier: identity.identifier })
     }
 
-    onStartSession((contact?: Contact) => {
+    onStartSession((contact?: Contact, attributes?: Attributes) => {
       // Handed over raw: begin() owns the merge, and doing it here too made the host's claim win
       // even in the unverified case, silently discarding a correction the visitor had just typed.
       // Nothing is written to storage either — the answers travel with the first message, and
       // "have we already asked?" is answered by whether a conversation exists.
-      begin(contact)
+      begin(contact, attributes)
     })
 
     // Registered before boot() so a setUser queued before mount is applied to the first

@@ -27,7 +27,7 @@
   line-height: 1.5;
 }
 .tk *, .tk *::before, .tk *::after { box-sizing: border-box; }
-.tk button, .tk textarea, .tk input { font-family: inherit; }
+.tk button, .tk textarea, .tk input, .tk select { font-family: inherit; }
 .tk :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Text fields draw their own focus ring (border colour + box-shadow). The global outline above
    would sit outside that, leaving a visible gap between two rings — so they opt out. */
@@ -300,6 +300,11 @@
 .tk-field-input.has-error { border-color: var(--crit); }
 .tk-field-input.has-error:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--crit) 18%, transparent); }
 .tk-field-err { font-size: 11.5px; color: var(--crit); }
+.tk-field-hint { font-size: 11.5px; line-height: 1.4; color: var(--faint); }
+.tk-field-optional { font-weight: 400; color: var(--faint); }
+select.tk-field-input { cursor: pointer; }
+.tk-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 1.4; color: var(--ink); cursor: pointer; }
+.tk-check input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--accent); cursor: pointer; }
 .tk-prechat-go {
   margin-top: 4px; height: 44px; flex: none; border: 0; border-radius: 12px; cursor: pointer;
   font-size: 14.5px; font-weight: 600; color: var(--on-accent);

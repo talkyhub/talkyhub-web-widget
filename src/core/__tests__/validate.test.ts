@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateEmail, validateName, validatePhone } from '../validate'
+import { validateCustom, validateEmail, validateName, validatePhone } from '../validate'
 
 // These rules are hand-rolled rather than delegated to libphonenumber-js (see validate.ts
 // for the size measurement), which makes the cases below the actual specification. An
@@ -78,4 +78,57 @@ describe('validateName', () => {
   rejects(validateName, '')
   rejects(validateName, '   ')
   rejects(validateName, 'x'.repeat(151))
+})
+
+// Custom fields mirror the API's parser (PreChatCustomFields.Coerce): a value it would refuse with a
+// 400 refuses the whole chat, so it has to be caught here instead.
+describe('validateCustom', () => {
+  const f = (type: string, required = false, options: string[] = []) => ({ type, required, options })
+  const value = (type: string, raw: string | boolean, options?: string[]) => validateCustom(f(type, false, options), raw)
+
+  it('skips a blank optional answer and requires a required one', () => {
+    expect(value('text', '  ')).toEqual({ error: null })
+    expect(validateCustom(f('text', true), '').error).not.toBeNull()
+    expect(validateCustom(f('list', true, ['a']), '').error).not.toBeNull()
+  })
+
+  it('text: trimmed, up to 500 characters', () => {
+    expect(value('text', '  Клиника  ')).toEqual({ error: null, value: 'Клиника' })
+    expect(value('text', 'x'.repeat(501)).error).not.toBeNull()
+  })
+
+  it('number: reads what people type and sends a number', () => {
+    expect(value('number', '1 234,5')).toEqual({ error: null, value: 1234.5 })
+    expect(value('number', '-3')).toEqual({ error: null, value: -3 })
+    expect(value('number', '12abc').error).not.toBeNull()
+    expect(value('number', '1,2,3').error).not.toBeNull()
+    expect(value('number', '1e40').error).not.toBeNull()
+    expect(value('number', '9'.repeat(20)).error).not.toBeNull()
+  })
+
+  it('link: bare hosts, ports and http(s) pass; other schemes and dotless hosts do not', () => {
+    expect(value('link', 'clinic.ru')).toEqual({ error: null, value: 'clinic.ru' })
+    expect(value('link', 'clinic.ru:8080/a')).toEqual({ error: null, value: 'clinic.ru:8080/a' })
+    expect(value('link', 'https://clinic.ru/x?y=1').error).toBeNull()
+    expect(value('link', 'javascript://alert(1)').error).not.toBeNull()
+    expect(value('link', 'localhost').error).not.toBeNull()
+    expect(value('link', 'clinic .ru').error).not.toBeNull()
+  })
+
+  it('date: real yyyy-MM-dd dates only', () => {
+    expect(value('date', '2026-10-28')).toEqual({ error: null, value: '2026-10-28' })
+    expect(value('date', '2026-02-30').error).not.toBeNull()
+    expect(value('date', '28.10.2026').error).not.toBeNull()
+  })
+
+  it('checkbox: unticked is an answer, unless the box is required', () => {
+    expect(value('checkbox', false)).toEqual({ error: null, value: false })
+    expect(value('checkbox', true)).toEqual({ error: null, value: true })
+    expect(validateCustom(f('checkbox', true), false).error).not.toBeNull()
+  })
+
+  it('list: one of the options, sent in the option’s own spelling', () => {
+    expect(value('list', 'бизнес', ['Старт', 'Бизнес'])).toEqual({ error: null, value: 'Бизнес' })
+    expect(value('list', 'Про', ['Старт', 'Бизнес']).error).not.toBeNull()
+  })
 })

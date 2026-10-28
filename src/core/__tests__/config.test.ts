@@ -169,6 +169,56 @@ describe('pre-chat fields', () => {
   })
 })
 
+// GET /config's `pre_chat.custom_fields` (API docs/widget-prechat-custom-fields.md §10). Whatever
+// this widget can't render is dropped: the server ignores a key that isn't sent.
+describe('pre-chat custom fields', () => {
+  const field = (over: Record<string, unknown> = {}) => ({
+    key: 'project', label: 'Проект', type: 'text', required: true, description: null, options: null, ...over,
+  })
+
+  it('keeps the admin’s order and shape', async () => {
+    respond({
+      pre_chat: {
+        enabled: true,
+        fields: ['name'],
+        custom_fields: [field(), field({ key: 'plan', label: 'Тариф', type: 'list', required: false, options: ['Старт', 'Бизнес'], description: 'Если знаете' })],
+      },
+    })
+    expect((await load()).preChat.customFields).toEqual([
+      { key: 'project', label: 'Проект', type: 'text', required: true, description: undefined, options: [] },
+      { key: 'plan', label: 'Тариф', type: 'list', required: false, description: 'Если знаете', options: ['Старт', 'Бизнес'] },
+    ])
+  })
+
+  it('is empty when the API predates custom fields', async () => {
+    respond({ pre_chat: { enabled: true, fields: ['name'] } })
+    expect((await load()).preChat.customFields).toEqual([])
+  })
+
+  it('drops unknown types, keyless and duplicate fields, and lists with nothing to pick', async () => {
+    respond({
+      pre_chat: {
+        custom_fields: [
+          field({ type: 'signature' }),
+          field({ key: ' ' }),
+          field({ key: 'plan', type: 'list', options: [] }),
+          field({ key: 'site', type: 'link' }),
+          field({ key: 'site', type: 'number' }),
+          'nonsense',
+        ],
+      },
+    })
+    expect((await load()).preChat.customFields.map((f) => [f.key, f.type])).toEqual([['site', 'link']])
+  })
+
+  it('falls back to the key for a missing label, and holds to ten fields', async () => {
+    respond({ pre_chat: { custom_fields: Array.from({ length: 12 }, (_, i) => field({ key: `f${i}`, label: null })) } })
+    const fields = (await load()).preChat.customFields
+    expect(fields).toHaveLength(10)
+    expect(fields[0].label).toBe('f0')
+  })
+})
+
 describe('failure', () => {
   it('falls back to defaults when the endpoint is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))

@@ -27,6 +27,7 @@
       <label>agent name <input name="agent_name" value="VerificaHub - поддержка" /></label>
       <label>greeting <input name="greeting" value="Привет! Чем помочь?" /></label>
       <label><span><input name="pre_chat" type="checkbox" /> pre-chat (name, email)</span></label>
+      <label><span><input name="custom" type="checkbox" /> + custom fields (text, list)</span></label>
       <div id="log"></div>
     </form>
     <!-- Same sandbox as the app's WidgetPreview (talkyhub-web), so this stand-in breaks where it would. -->
@@ -43,7 +44,16 @@
         greeting: f.greeting.value || null,
         reply_time: 'Отвечаем за 5 минут',
         appearance: { accent: f.accent.value, position: f.position.value, launcher: f.launcher.value, launcher_text: f.launcher_text.value },
-        pre_chat: { enabled: f.pre_chat.checked, fields: ['name', 'email'] },
+        pre_chat: {
+          enabled: f.pre_chat.checked,
+          fields: ['name', 'email'],
+          custom_fields: f.custom.checked
+            ? [
+                { key: 'project', label: 'Проект', type: 'text', required: true, description: null, options: null },
+                { key: 'plan', label: 'Тариф', type: 'list', required: false, description: null, options: ['Старт', 'Бизнес'] },
+              ]
+            : [],
+        },
         channels: [{ kind: 'telegram', url: 'https://t.me/verificahub', label: 'Telegram' }],
       })
       const send = (frame) => frame.contentWindow.postMessage({ type: 'talkyhub:preview:config', config: config() }, location.origin)

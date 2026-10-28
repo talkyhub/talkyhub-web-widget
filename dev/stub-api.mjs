@@ -24,6 +24,15 @@ const CORS = {
   'Access-Control-Allow-Headers': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 }
+const CUSTOM_FIELDS = [
+  { key: 'project', label: 'Проект', type: 'text', required: true, description: null, options: null },
+  { key: 'plan', label: 'Тариф', type: 'list', required: false, description: null, options: ['Старт', 'Бизнес'] },
+  { key: 'seats', label: 'Сотрудников', type: 'number', required: false, description: null, options: null },
+  { key: 'company_site', label: 'Сайт компании', type: 'link', required: false, description: 'Можно без https://', options: null },
+  { key: 'renewal', label: 'Дата продления', type: 'date', required: false, description: null, options: null },
+  { key: 'consent', label: 'Согласен на обработку данных', type: 'checkbox', required: true, description: null, options: null },
+]
+
 const json = (res, body, status = 200) => {
   res.writeHead(status, { ...CORS, 'Content-Type': 'application/json' })
   res.end(JSON.stringify(body))
@@ -190,7 +199,11 @@ http.createServer(async (req, res) => {
     const q = url.searchParams
     if (q.has('prechat')) {
       const f = q.get('prechat') || ''
-      S.config.preChat = { enabled: !!f, fields: f ? f.split(',') : [] }
+      S.config.preChat = { ...S.config.preChat, enabled: !!f, fields: f ? f.split(',') : [] }
+    }
+    // One custom field of every type. Answers show up as `attributes` in /__state's sessionLog.
+    if (q.has('custom')) {
+      S.config.preChat = { ...S.config.preChat, enabled: true, custom_fields: q.get('custom') === 'on' ? CUSTOM_FIELDS : [] }
     }
     if (q.has('modal')) S.config.modal = q.get('modal') === 'on'
     if (q.has('launcher')) S.config.launcher = q.get('launcher')

@@ -1,4 +1,4 @@
-import type { Author, Contact, Message, WidgetConfig } from './types'
+import type { Attributes, Author, Contact, Message, WidgetConfig } from './types'
 import { rid } from './types'
 import { loadSession, saveSession } from './session'
 import type { Session } from './session'
@@ -23,6 +23,8 @@ export interface SessionIdentity {
   // Pre-chat answers and/or host prefill, resolved through the same ContactResolver every
   // inbound channel uses.
   contact?: Contact
+  // Answers to the inbox's custom fields, by key. The API reads only the keys on this inbox's form.
+  attributes?: Attributes
   // The host app's user id, trusted by the API only alongside a valid identifierHash.
   identifier?: string
   identifierHash?: string
@@ -187,7 +189,9 @@ export class SseTransport implements Transport {
   // lands on a DIFFERENT conversation — the user's thread from another device — follow it:
   // replace the history and re-ticket the stream, which is still bound to the old one.
   async identify(identity: SessionIdentity): Promise<void> {
-    this.armed = identity
+    // The host knows nothing of the form's custom-field answers, so a setUser between the form and
+    // the first message must not drop them.
+    this.armed = { ...identity, attributes: identity.attributes ?? this.armed?.attributes }
     // Nothing is open yet, so there is nothing to re-post: the details ride along when the
     // visitor's first message opens the session.
     if (!this.sessionToken) return
@@ -216,6 +220,7 @@ export class SseTransport implements Transport {
         body: JSON.stringify({
           source_id: session.sourceId,
           contact: identity?.contact,
+          attributes: identity?.attributes,
           identifier: identity?.identifier,
           identifier_hash: identity?.identifierHash,
           resume: resume || undefined,
@@ -232,6 +237,14 @@ export class SseTransport implements Transport {
         console.error(
           "[TalkyHub] identifier_hash was rejected. It must be HMAC-SHA256 of the identifier, keyed with this inbox's identity secret, computed on your server. See docs/identity.md.",
         )
+        return null
+      }
+      if (res.status === 400) {
+        // The API names the field it refused (`attributes.plan (Тариф) must be …`). The form checks
+        // the same rules, so reaching this means the two disagree: say which field, for whoever
+        // integrates.
+        const problem = (await res.json().catch(() => null)) as { detail?: string } | null
+        console.error(`[TalkyHub] the chat could not start: ${problem?.detail ?? 'the API refused the session'}`)
         return null
       }
       if (!res.ok) return null // widget stays usable with the client-rendered greeting

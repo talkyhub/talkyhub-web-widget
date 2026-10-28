@@ -1,5 +1,5 @@
-import type { Channel, ChannelKind, PreChatField, WidgetConfig } from './types'
-import { CHANNEL_KINDS, PRE_CHAT_FIELDS } from './types'
+import type { Channel, ChannelKind, CustomFieldType, PreChatCustomField, PreChatField, WidgetConfig } from './types'
+import { CHANNEL_KINDS, CUSTOM_FIELD_TYPES, PRE_CHAT_FIELDS } from './types'
 import { DEFAULT_ACCENT, parseHex } from './theme'
 
 export const DEFAULT_CONFIG: WidgetConfig = {
@@ -15,7 +15,7 @@ export const DEFAULT_CONFIG: WidgetConfig = {
     launcherText: 'Chat with us — we’re online',
     modal: false,
   },
-  preChat: { enabled: false, fields: ['name', 'email'] },
+  preChat: { enabled: false, fields: ['name', 'email'], customFields: [] },
   channels: [],
   display: { mode: 'floating', hideLauncher: 'never' },
 }
@@ -35,8 +35,17 @@ export interface RemoteConfig {
     launcher_text?: string | null
     modal?: boolean
   }
-  pre_chat?: { enabled?: boolean; fields?: string[] }
+  pre_chat?: { enabled?: boolean; fields?: string[]; custom_fields?: RemoteCustomField[] }
   channels?: { kind?: string; url?: string; label?: string; color?: string }[]
+}
+
+interface RemoteCustomField {
+  key?: string
+  label?: string | null
+  type?: string
+  required?: boolean
+  description?: string | null
+  options?: string[] | null
 }
 
 type Position = WidgetConfig['appearance']['position']
@@ -68,6 +77,39 @@ function preChatFields(fields: string[] | undefined, fallback: PreChatField[]): 
   // anything this widget version can't render.
   const wanted = new Set(fields)
   return PRE_CHAT_FIELDS.filter((f) => wanted.has(f))
+}
+
+// The API caps a form at 10 custom fields; holding to it here keeps a bad row from growing the form.
+const MAX_CUSTOM_FIELDS = 10
+
+// The workspace's own contact fields, asked after the standard ones in the order the admin set.
+// A field this widget can't render — an unknown type (a newer API), a list with nothing to pick, a
+// missing key — is dropped: the server ignores what isn't sent, so skipping it is always safe.
+function customFields(list: RemoteCustomField[] | undefined, fallback: PreChatCustomField[]): PreChatCustomField[] {
+  if (!Array.isArray(list)) return fallback
+  const out: PreChatCustomField[] = []
+  const seen = new Set<string>()
+  for (const f of list) {
+    const key = typeof f?.key === 'string' ? f.key.trim() : ''
+    if (!key || seen.has(key) || !CUSTOM_FIELD_TYPES.includes(f.type as CustomFieldType)) continue
+    const type = f.type as CustomFieldType
+    const options =
+      type === 'list' && Array.isArray(f.options)
+        ? f.options.filter((o): o is string => typeof o === 'string' && !!o.trim()).map((o) => o.trim())
+        : []
+    if (type === 'list' && !options.length) continue
+    seen.add(key)
+    out.push({
+      key,
+      label: (typeof f.label === 'string' && f.label.trim()) || key,
+      type,
+      required: f.required === true,
+      description: (typeof f.description === 'string' && f.description.trim()) || undefined,
+      options,
+    })
+    if (out.length === MAX_CUSTOM_FIELDS) break
+  }
+  return out
 }
 
 /**
@@ -230,6 +272,7 @@ export function parseRemoteConfig(base: WidgetConfig, remote: unknown): WidgetCo
     preChat: {
       enabled: r.pre_chat?.enabled ?? base.preChat.enabled,
       fields: preChatFields(r.pre_chat?.fields, base.preChat.fields),
+      customFields: customFields(r.pre_chat?.custom_fields, base.preChat.customFields),
     },
     channels: channels(r.channels, base.channels),
   }

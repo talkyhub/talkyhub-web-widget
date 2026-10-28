@@ -163,7 +163,13 @@ Anonymous, CORS-any-origin, snake_case. `404` for an unknown token.
     "launcher": "label",
     "launcher_text": "Напишите нам, мы онлайн!"
   },
-  "pre_chat": { "enabled": true, "fields": ["name", "email", "phone"] },
+  "pre_chat": {
+    "enabled": true,
+    "fields": ["name", "email", "phone"],
+    "custom_fields": [
+      { "key": "project", "label": "Проект", "type": "text", "required": true, "description": null, "options": null }
+    ]
+  },
   "channels": [
     { "kind": "telegram", "url": "https://t.me/verificahub" },
     { "kind": "whatsapp", "url": "https://wa.me/79991234567" },
@@ -186,6 +192,7 @@ Anonymous, CORS-any-origin, snake_case. `404` for an unknown token.
 | `appearance.modal` | bool | `false` | Open as a modal: the page dims behind the panel and it is centred. See **Modal mode**. |
 | `pre_chat.enabled` | bool | `false` | Gate the thread behind a form. |
 | `pre_chat.fields` | `("name"\|"email"\|"phone")[]` | `["name","email"]` | Which fields to collect. Rendered in canonical order regardless of array order; unknown values are dropped. |
+| `pre_chat.custom_fields` | `CustomField[]` | `[]` | The workspace's own contact fields, asked after `fields` in the admin's order. See **Custom fields**. |
 | `channels` | `Channel[]` | `[]` | Messenger links offered beside the chat. See **Channel links**. |
 
 > `launcher: "label"` and `launcher_text` are **not yet served** by
@@ -412,6 +419,36 @@ rejecting — `8 (999) 123-45-67` and `89991234567` have to resolve to one conta
 | `name` | anything non-empty up to 150 chars | empty, whitespace-only, over-long | whitespace collapsed |
 | `email` | the WHATWG HTML `<input type=email>` grammar, plus a required dot in the domain and a ≥2-char alphabetic or punycode TLD; RFC 5321 length limits | `jane@localhost`, `jane@example`, one-char or numeric TLD, over-long local part | domain lowercased, local part preserved |
 | `phone` | `+`-prefixed E.164, the `00` international prefix, and national-format digits; spaces, dashes, dots and parens anywhere | letters (vanity numbers), <7 or >15 digits, country code starting `0`, stray `+` | E.164 when a country code is present, bare digits when not |
+
+### Custom fields
+
+`pre_chat.custom_fields` are the workspace's contact custom fields (`CustomAttributeDefinition`)
+that the admin put on this inbox's form. They render after the standard fields, in the order
+served, and the answers go to `POST /session` as `attributes`, keyed by `key`, alongside
+`contact`. The API stores them in `Contact.custom_attributes`, so agents see them in the contact
+sidebar. The API side is specified in talkyhub-api `docs/widget-prechat-custom-fields.md` §10.
+
+| `type` | Input | Sent as |
+|---|---|---|
+| `text` | text box, up to 500 chars | trimmed string |
+| `number` | text box with the decimal keypad (`type=number` would read `1 234,5` as empty) | number; spaces are separators, a comma is the decimal point |
+| `link` | url box | the string as typed. The API adds `https://` to a bare `clinic.ru` |
+| `date` | date picker | `"yyyy-MM-dd"`; impossible dates such as 30 February are refused |
+| `checkbox` | checkbox | boolean. A required checkbox is a consent box and has to be ticked |
+| `list` | select over `options` | the option, in its own spelling |
+
+- `required` is enforced by the form only. The API cannot enforce it, because the session also
+  opens without the form (resume, returning visitors).
+- A blank optional answer is left out, not sent as `""`.
+- The rules in `validateCustom` mirror the API's parser, `PreChatCustomFields.Coerce`. Any value
+  the API refuses fails `/session` with a 400, and with it the visitor's first message. Change
+  both together. If they disagree anyway, the widget logs the API's `detail`, which names the
+  field.
+- Fields this bundle can't render are dropped while the config is parsed: an unknown `type`, a
+  `list` with no options, a missing or duplicate `key`. At most 10 fields are kept.
+- A host can supply name, email and phone through `setUser`, but not custom fields. So when
+  custom fields are configured, the form stays up even for a verified user, asking only for the
+  custom fields.
 
 ### Why not libphonenumber-js
 

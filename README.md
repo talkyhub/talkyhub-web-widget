@@ -42,7 +42,7 @@ open "http://localhost:5173/?api=http://localhost:5178&token=wgt_test"
 
 | Control | Does |
 |---|---|
-| `GET /__config?prechat=name,email&launcher=label` | Change what `/config` serves |
+| `GET /__config?prechat=name,email&launcher=label` | Change what `/config` serves; `custom=on` adds one custom field of every type |
 | `GET /__resolve` | What an agent clicking **Resolve** looks like — the widget shows the resolved notice |
 | `GET /__cold` | Arms the cold-thread rollover: the next message starts a new conversation and the widget re-binds |
 | `GET /__state` | Session requests received, conversations, and the `identifier_hash` values for the test users |

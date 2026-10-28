@@ -1,8 +1,8 @@
 import { useState } from 'preact/hooks'
-import type { Contact, PreChatField, WidgetConfig } from '../core/types'
+import type { Attributes, Contact, PreChatCustomField, PreChatField, WidgetConfig } from '../core/types'
 import { prefill, prefillSkips, submitPreChat } from '../core/store'
 import { remainingFields } from '../core/identity'
-import { validateEmail, validateName, validatePhone } from '../core/validate'
+import { validateCustom, validateEmail, validateName, validatePhone } from '../core/validate'
 import type { FieldResult } from '../core/validate'
 
 const LABELS: Record<PreChatField, string> = {
@@ -37,6 +37,15 @@ const VALIDATORS: Record<PreChatField, (raw: string) => FieldResult> = {
   phone: validatePhone,
 }
 
+// Custom fields render as the closest native input. Numbers stay a text box: <input type=number>
+// rejects the "1 234,5" people actually type and reports it as empty, so the visitor's answer
+// would vanish instead of being read.
+const CUSTOM_INPUT: Record<string, { type: string; inputMode?: string }> = {
+  number: { type: 'text', inputMode: 'decimal' },
+  link: { type: 'url', inputMode: 'url' },
+  date: { type: 'date' },
+}
+
 // Shown in place of the thread while appearance-configured pre-chat fields are unanswered.
 // Submitting arms the session with the answers; the visitor's first message opens it (POST
 // /session with `contact`), so no conversation reaches the agent console before then.
@@ -50,6 +59,11 @@ export function PreChat({ config }: { config: WidgetConfig }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState(false)
+  // Custom-field answers, apart from the standard ones: their keys are the workspace's, and could
+  // be `name` too.
+  const [answers, setAnswers] = useState<Record<string, string | boolean>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
+  const custom = config.preChat.customFields
 
   // Prefill is the starting value, not the state: keeping it out of `values` means a setUser
   // arriving later still shows up, and an untouched field never goes stale.
@@ -63,6 +77,11 @@ export function PreChat({ config }: { config: WidgetConfig }) {
     if (touched) setErrors((e) => ({ ...e, [field]: VALIDATORS[field](value).error ?? '' }))
   }
 
+  function answer(field: PreChatCustomField, raw: string | boolean): void {
+    setAnswers((a) => ({ ...a, [field.key]: raw }))
+    if (touched) setCustomErrors((e) => ({ ...e, [field.key]: validateCustom(field, raw).error ?? '' }))
+  }
+
   function submit(e: Event): void {
     e.preventDefault()
     setTouched(true)
@@ -73,13 +92,21 @@ export function PreChat({ config }: { config: WidgetConfig }) {
       if (error) next[f] = error
       else contact[f] = value
     }
+    const nextCustom: Record<string, string> = {}
+    const attributes: Attributes = {}
+    for (const f of custom) {
+      const { error, value } = validateCustom(f, answers[f.key] ?? (f.type === 'checkbox' ? false : ''))
+      if (error) nextCustom[f.key] = error
+      else if (value !== undefined) attributes[f.key] = value
+    }
     setErrors(next)
-    if (Object.keys(next).length) return
+    setCustomErrors(nextCustom)
+    if (Object.keys(next).length || Object.keys(nextCustom).length) return
     // The normalised value goes to the API, not the raw input: a phone typed as
     // `8 (999) 123-45-67` and one typed as `89991234567` must resolve to one contact.
     // What the visitor confirmed wins over what the page claimed. For a verified user the two
     // never overlap, since those fields were dropped from the form above.
-    submitPreChat({ ...prefill.value, ...contact })
+    submitPreChat({ ...prefill.value, ...contact }, Object.keys(attributes).length ? attributes : undefined)
   }
 
   return (
@@ -118,9 +145,103 @@ export function PreChat({ config }: { config: WidgetConfig }) {
           </label>
         )
       })}
+      {custom.map((f, i) => (
+        <CustomInput
+          key={f.key}
+          field={f}
+          id={`tk-pc-x${i}`}
+          value={answers[f.key]}
+          error={touched ? customErrors[f.key] : ''}
+          onAnswer={(raw) => answer(f, raw)}
+        />
+      ))}
       <button class="tk-prechat-go" type="submit">
         Start chat
       </button>
     </form>
+  )
+}
+
+// One of the workspace's own fields. Ids are positional: a key is the workspace's to choose and
+// need not be a valid id.
+function CustomInput({
+  field,
+  id,
+  value,
+  error,
+  onAnswer,
+}: {
+  field: PreChatCustomField
+  id: string
+  value: string | boolean | undefined
+  error: string
+  onAnswer: (raw: string | boolean) => void
+}) {
+  const describedBy = [field.description && `${id}-hint`, error && `${id}-err`].filter(Boolean).join(' ') || undefined
+  const hint = field.description && (
+    <span class="tk-field-hint" id={`${id}-hint`}>
+      {field.description}
+    </span>
+  )
+  const err = error && (
+    <span class="tk-field-err" id={`${id}-err`}>
+      {error}
+    </span>
+  )
+
+  if (field.type === 'checkbox') {
+    return (
+      <div class="tk-field">
+        <label class="tk-check" for={id}>
+          <input
+            id={id}
+            type="checkbox"
+            checked={value === true}
+            aria-invalid={!!error}
+            aria-describedby={describedBy}
+            onChange={(e) => onAnswer((e.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>{field.label}</span>
+        </label>
+        {hint}
+        {err}
+      </div>
+    )
+  }
+
+  const text = typeof value === 'string' ? value : ''
+  const common = {
+    id,
+    class: `tk-field-input ${error ? 'has-error' : ''}`,
+    'aria-invalid': !!error,
+    'aria-describedby': describedBy,
+  }
+  return (
+    <label class="tk-field" for={id}>
+      <span class="tk-field-label">
+        {field.label}
+        {!field.required && <span class="tk-field-optional"> · optional</span>}
+      </span>
+      {field.type === 'list' ? (
+        <select {...common} value={text} onChange={(e) => onAnswer((e.currentTarget as HTMLSelectElement).value)}>
+          <option value="">Choose…</option>
+          {field.options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          {...common}
+          type={CUSTOM_INPUT[field.type]?.type ?? 'text'}
+          inputMode={CUSTOM_INPUT[field.type]?.inputMode as 'decimal' | 'url' | undefined}
+          value={text}
+          onInput={(e) => onAnswer((e.currentTarget as HTMLInputElement).value)}
+        />
+      )}
+      {hint}
+      {err}
+    </label>
   )
 }

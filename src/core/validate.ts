@@ -121,3 +121,86 @@ export function validateName(raw: string): FieldResult {
   if (v.length > MAX_NAME) return bad('That name is too long')
   return ok(v)
 }
+
+// ---- custom fields ----
+//
+// The workspace's own contact fields. The API re-checks every type and answers a wrong one with a
+// 400 that refuses the whole session, so these rules mirror its parser: anything accepted here must
+// be accepted there, or a visitor gets a chat that silently never opens.
+
+/** `value` is what goes in `attributes`; undefined means the field was left blank and is not sent. */
+export interface CustomResult {
+  error: string | null
+  value?: string | number | boolean
+}
+
+// The API refuses a longer text answer.
+const MAX_TEXT = 500
+
+// The API stores numbers as .NET decimal (about ±7.9e28) and refuses anything past it; nobody types
+// a contract number that long, so stop well short of where float precision runs out too.
+const MAX_NUMBER = 1e15
+
+// "1 234,5", "1234.5", "-3": what people type. Spaces (incl. the narrow no-break space a locale
+// may insert) are group separators, and a single comma is the decimal point.
+export function parseNumber(raw: string): number | null {
+  const v = raw.replace(/[\s\u00a0\u202f]/g, '').replace(',', '.')
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(v)) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+// A link someone types is usually bare: `clinic.ru`. The API adds the https:// itself (only when
+// there is no `://`, so `clinic.ru:8080` is a host and a port, not a scheme), so the widget only
+// checks that the result could be a web address, and sends it as typed.
+const MAX_LINK = 2048
+
+function isLink(raw: string): boolean {
+  if (/\s/.test(raw)) return false
+  const withScheme = raw.includes('://') ? raw : `https://${raw}`
+  if (withScheme.length > MAX_LINK) return false
+  try {
+    const u = new URL(withScheme)
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname.includes('.')
+  } catch {
+    return false
+  }
+}
+
+function isDate(raw: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (!m) return false
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+  // Rejects 2026-02-30, which Date would quietly roll into March.
+  return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]
+}
+
+export function validateCustom(
+  field: { type: string; required: boolean; options: readonly string[] },
+  raw: string | boolean,
+): CustomResult {
+  if (field.type === 'checkbox') {
+    // A required checkbox is a consent box: it has to be ticked. Otherwise unticked is an answer.
+    if (field.required && raw !== true) return { error: 'Required' }
+    return { error: null, value: raw === true }
+  }
+  const v = String(raw).replace(/\s+/g, ' ').trim()
+  if (!v) return field.required ? { error: 'Required' } : { error: null }
+  switch (field.type) {
+    case 'number': {
+      const n = parseNumber(v)
+      if (n === null) return { error: 'Enter a number' }
+      return Math.abs(n) < MAX_NUMBER ? { error: null, value: n } : { error: 'That number is too large' }
+    }
+    case 'link':
+      return isLink(v) ? { error: null, value: v } : { error: 'Enter a valid link' }
+    case 'date':
+      return isDate(v) ? { error: null, value: v } : { error: 'Enter a valid date' }
+    case 'list': {
+      const option = field.options.find((o) => o.toLowerCase() === v.toLowerCase())
+      return option ? { error: null, value: option } : { error: 'Choose one of the options' }
+    }
+    default:
+      return v.length > MAX_TEXT ? { error: 'That answer is too long' } : { error: null, value: v }
+  }
+}

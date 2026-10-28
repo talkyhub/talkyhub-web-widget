@@ -17,6 +17,27 @@ export type PreChatField = 'name' | 'email' | 'phone'
 
 export const PRE_CHAT_FIELDS: readonly PreChatField[] = ['name', 'email', 'phone']
 
+// The workspace's own contact fields (CustomAttributeDefinition), asked after the standard ones.
+// The API names the input type; the widget only renders the ones listed here.
+export type CustomFieldType = 'text' | 'number' | 'link' | 'date' | 'checkbox' | 'list'
+
+export const CUSTOM_FIELD_TYPES: readonly CustomFieldType[] = ['text', 'number', 'link', 'date', 'checkbox', 'list']
+
+export interface PreChatCustomField {
+  /** The attribute key the answer is stored under on the contact. */
+  key: string
+  label: string
+  type: CustomFieldType
+  required: boolean
+  /** Hint shown under the label. */
+  description?: string
+  /** The choices of a `list` field; empty for every other type. */
+  options: string[]
+}
+
+/** Custom-field answers by key. Sent as `attributes` on POST /session. */
+export type Attributes = Record<string, string | number | boolean>
+
 /** Pre-chat answers. Sent as `contact` on POST /session, which resolves/creates the contact. */
 export interface Contact {
   name?: string
@@ -85,7 +106,7 @@ export interface WidgetConfig {
      */
     modal: boolean
   }
-  preChat: { enabled: boolean; fields: PreChatField[] }
+  preChat: { enabled: boolean; fields: PreChatField[]; customFields: PreChatCustomField[] }
   /** Rendered as round links beside the launcher. Empty means the feature is off. */
   channels: Channel[]
   /**

@@ -9,6 +9,15 @@ sidebar_position: 3
 Changes to the website chat widget (cdn.talkyhub.ru/widget/v1/loader.js), newest first. The embed snippet
 never changes: updates reach every site on their own, within five minutes of a release.
 
+## 1.5.0 — 2026-10-28
+
+### Added
+
+- **Your own fields on the pre-chat form** — after name, email and phone, the form asks the contact
+  fields you chose for the channel: text, a number, a link, a date, a checkbox or a choice from a list.
+  Required fields can't be skipped, and answers are checked before they're sent. They're saved to the
+  contact's card and arrive with the visitor's first message.
+
 ## 1.4.0 — 2026-10-25
 
 ### Added
